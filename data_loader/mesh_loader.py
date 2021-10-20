@@ -22,7 +22,7 @@ from utils.util import LM_idx2radius
 
 
 class MeshesLoader():
-    def __init__(self, mesh_dir, obj_list, size):
+    def __init__(self, mesh_dir, obj_list, render_size):
         self.device = torch.device("cuda:0")
         self.MESH_DIR = mesh_dir
         self.obj_list = obj_list
@@ -30,7 +30,7 @@ class MeshesLoader():
         self.MESH_INFO = self.load_mesh_info()
         self.PTS_DICT = self.sample_pts()
         self.on_device()
-        self.RENDER_DICT = self.render_default(size)
+        self.RENDER_DICT = self.render_default(render_size)
 
 
     def load_meshes(self):

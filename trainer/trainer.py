@@ -52,7 +52,7 @@ class Trainer(BaseTrainer):
             # output = self.model(images, targets)
             # loss = self.criterion(output, target)
             # loss = sum(loss_dict.values())
-            loss = loss_dict[2] + loss_dict[1] + loss_dict[0]
+            loss = loss_dict[0] # + loss_dict[2] + loss_dict[1] + loss_dict[0]
             # loss = loss_dict[0]
             loss.backward()
             self.optimizer.step()
