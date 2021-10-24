@@ -28,6 +28,7 @@ class DataLoader(BaseDataLoader):
                 self.dataset = pickle.load(f)
 
         self.dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset) if batch['obj_id'] in obj_list]
+        # self.dataset = self.dataset[0:4]
         #### self.dataset --> (batch, target) tuple
         super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=self.collate_fn)
 

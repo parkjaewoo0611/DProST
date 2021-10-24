@@ -72,6 +72,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
 from pytorch3d.transforms.transform3d import Transform3d
+from pytorch3d.transforms import euler_angles_to_matrix
 
 def TCO_symmetry(TCO_label, mesh_info_batch, continuous_symmetry_N=8):
     bsz = TCO_label.shape[0]
@@ -146,6 +147,26 @@ def bbox_add_noise(bbox, std_rate=0.2):
     bbox_std = torch.cat((bbox_size * std_rate, bbox_size * std_rate), 1)
     noisy_bbox = torch.normal(bbox, bbox_std).to(device)
     return noisy_bbox
+
+def add_noise(TCO, euler_deg_std=[15, 15, 15], trans_std=[0.01, 0.01, 0.05]):
+    TCO_out = TCO.clone()
+    device = TCO_out.device
+    bsz = TCO.shape[0]
+    euler_noise_deg = np.concatenate(
+        [np.random.normal(loc=0, scale=euler_deg_std_i, size=bsz)[:, None]
+         for euler_deg_std_i in euler_deg_std], axis=1)
+    #euler_noise_deg = np.ones_like(euler_noise_deg) * 10
+    euler_noise_rad = torch.tensor(euler_noise_deg) * np.pi / 180
+    R_noise = euler_angles_to_matrix(euler_noise_rad, 'XYZ').float().to(device)
+    
+    trans_noise = np.concatenate(
+        [np.random.normal(loc=0, scale=trans_std_i, size=bsz)[:, None]
+         for trans_std_i in trans_std], axis=1)
+    trans_noise = torch.tensor(trans_noise).float().to(device)
+    TCO_out[:, :3, :3] = R_noise @ TCO_out[:, :3, :3]
+    TCO_out[:, :3, 3] += trans_noise
+    return TCO_out
+
 
 def RT_from_boxes(boxes_2d, K):
     # User in BOP20 challenge

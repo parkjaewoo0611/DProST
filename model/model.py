@@ -3,6 +3,7 @@ from torch.hub import load_state_dict_from_url
 import torch.nn as nn
 import torch.nn.functional as F
 
+import torchvision.models as models
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNN, MaskRCNNPredictor, MaskRCNNHeads
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
@@ -29,35 +30,43 @@ from pytorch3d.renderer import (
 import numpy as np
 from base import BaseModel
 from utils.util import (
-    apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, TCO_to_vxvyvz,
+    apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, TCO_to_vxvyvz, add_noise,
     FX, FY, PX, PY, UNIT_CUBE_VERTEX
 )
 class LocalizationNetwork(nn.Module):
     def __init__(self):
         super().__init__()
-        self.model = nn.Sequential(
-            nn.Conv2d(256+3, 256, 3, 1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten(),
-            nn.Linear(256, 256, bias=True),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Linear(256, 256, bias=True),
-            nn.BatchNorm1d(256),
-            nn.ReLU()
-        )
-        self.trans_fc = nn.Linear(256, 3, bias=True)
+        backbone = models.resnet18(pretrained=False)
+        backbone = nn.Sequential(*(list(backbone.children())[:-2]))
+        backbone[0] = nn.Conv2d(1+3, 64, 3, 2, 2)
+        setattr(backbone, "n_features", 512)
+        self.model = backbone
+
+        # self.model = nn.Sequential(
+        #     nn.Conv2d(256+3, 256, 3, 1),
+        #     nn.BatchNorm2d(256),
+        #     nn.ReLU(),
+        #     nn.AdaptiveAvgPool2d((1, 1)),
+        #     nn.Flatten(),
+        #     nn.Linear(256, 256, bias=True),
+        #     nn.BatchNorm1d(256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, 256, bias=True),
+        #     nn.BatchNorm1d(256),
+        #     nn.ReLU()
+        # )
+        self.trans_fc = nn.Linear(self.model.n_features, 3, bias=True)
         self.trans_fc.weight.data = nn.Parameter(torch.zeros_like(self.trans_fc.weight.data))
         self.trans_fc.bias.data = nn.Parameter(torch.Tensor([0,0,1]))
 
-        self.rotat_fc = nn.Linear(256, 6, bias=True)
+        self.rotat_fc = nn.Linear(self.model.n_features, 6, bias=True)
         self.rotat_fc.weight.data = nn.Parameter(torch.zeros_like(self.rotat_fc.weight.data))
         self.rotat_fc.bias.data = nn.Parameter(torch.Tensor([1,0,0,0,1,0]))
     
     def forward(self, feature):
         encoded = self.model(feature)
+        encoded = F.relu(encoded)
+        encoded = encoded.flatten(2, 3).mean(dim=-1)
         rotation = self.rotat_fc(encoded)
         translation = self.trans_fc(encoded)
         result = torch.cat([rotation, translation], -1)
@@ -92,8 +101,8 @@ class ProjectivePose(BaseModel):
             3: 32
             }
 
-        self.proj_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=3)
-        self.image_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=3)
+        self.proj_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
+        self.image_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
         self.local_network = LocalizationNetwork()
 
 
@@ -126,8 +135,8 @@ class ProjectivePose(BaseModel):
         self.R_comp[0, 1, 1] = -1
         self.R_comp.requires_grad = True
 
-
-
+        self.vxvyvz_W_scaler = torch.tensor([self.W, 1, 1]).unsqueeze(0)
+        self.vxvyvz_H_scaler = torch.tensor([1, self.H, 1]).unsqueeze(0)
 
 
 
@@ -188,7 +197,10 @@ class ProjectivePose(BaseModel):
         K_crop = {}
         pr_RT[4] = RT_from_boxes(bboxes, K_batch).detach()  
         # pr_RT[4] = gt_RT
-
+        # pr_RT[4] = add_noise(gt_RT, euler_deg_std=[0, 0, 0], trans_std=[0.3, 0, 0])
+        # const = torch.zeros_like(gt_RT)
+        # const[:,:3,3] = -0.5
+        # pr_RT[4] = gt_RT + const 
         ####################### Projective STN #####################################
         # pr_RT[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], pr_proj, roi_feature, obj_dist[3], K_crop[3] = self.projective_pose(pr_RT[4], self.scale[3], ftr[3], ftr_mask[3], img_feature['3'], projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
         # pr_RT[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], pr_proj, roi_feature, obj_dist[2], K_crop[2] = self.projective_pose(pr_RT[3], self.scale[2], ftr[2], ftr_mask[2], img_feature['2'], projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
@@ -196,14 +208,20 @@ class ProjectivePose(BaseModel):
         # pr_RT[0], grid_crop[0], coeffi_crop[0], pr_grid_proj[0], pr_proj, roi_feature, obj_dist[0], K_crop[0] = self.projective_pose(pr_RT[1], self.scale[0], ftr[0], ftr_mask[0], img_feature['0'], projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
 
 
-        pr_RT[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], pr_proj, roi_feature, obj_dist[3], K_crop[3] = self.projective_pose(pr_RT[4], self.scale[3], ftr[3], ftr_mask[3], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        pr_RT[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], pr_proj, roi_feature, obj_dist[2], K_crop[2] = self.projective_pose(pr_RT[3], self.scale[2], ftr[2], ftr_mask[2], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        pr_RT[1], grid_crop[1], coeffi_crop[1], pr_grid_proj[1], pr_proj, roi_feature, obj_dist[1], K_crop[1] = self.projective_pose(pr_RT[2], self.scale[1], ftr[1], ftr_mask[1], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        pr_RT[0], grid_crop[0], coeffi_crop[0], pr_grid_proj[0], pr_proj, roi_feature, obj_dist[0], K_crop[0] = self.projective_pose(pr_RT[1], self.scale[0], ftr[0], ftr_mask[0], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-
+        # pr_RT[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], pr_proj, roi_feature, obj_dist[3], K_crop[3] = self.projective_pose(pr_RT[4], self.scale[3], ftr[3], ftr_mask[3], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
+        # pr_RT[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], pr_proj, roi_feature, obj_dist[2], K_crop[2] = self.projective_pose(pr_RT[3], self.scale[2], ftr[2], ftr_mask[2], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
+        # pr_RT[1], grid_crop[1], coeffi_crop[1], pr_grid_proj[1], pr_proj, roi_feature, obj_dist[1], K_crop[1] = self.projective_pose(pr_RT[2], self.scale[1], ftr[1], ftr_mask[1], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
+        pr_RT[0], grid_crop[0], coeffi_crop[0], pr_grid_proj[0], pr_proj, roi_feature, obj_dist[0], K_crop[0], pr_proj_n, pr_grid_proj_n, obj_dist_n = self.projective_pose(pr_RT[4], self.scale[0], ftr[0], ftr_mask[0], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
 
         import matplotlib.pyplot as plt
         aaa = pr_proj[0].mean(0).detach().cpu().numpy()
+        bb = (aaa - aaa.min())
+        bb = bb/(bb.max() + 1e-6)
+        plt.imsave('input.png', bb)
+
+
+        import matplotlib.pyplot as plt
+        aaa = pr_proj_n[0].mean(0).detach().cpu().numpy()
         bb = (aaa - aaa.min())
         bb = bb/(bb.max() + 1e-6)
         plt.imsave('prediction.png', bb)
@@ -221,10 +239,10 @@ class ProjectivePose(BaseModel):
         # plt.imsave('img_feature.png', bb)
 
         if gt_RT is not None:
-            loss_dict[3], gt_proj = self.loss(gt_RT.clone(), pr_RT[3], pr_RT[4], K_crop[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], ftr[3], ftr_mask[3], obj_dist[3])
-            loss_dict[2], gt_proj = self.loss(gt_RT.clone(), pr_RT[2], pr_RT[3], K_crop[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], ftr[2], ftr_mask[2], obj_dist[2])
-            loss_dict[1], gt_proj = self.loss(gt_RT.clone(), pr_RT[1], pr_RT[2], K_crop[1], grid_crop[1], coeffi_crop[1], pr_grid_proj[1], ftr[1], ftr_mask[1], obj_dist[1])
-            loss_dict[0], gt_proj = self.loss(gt_RT.clone(), pr_RT[0], pr_RT[1], K_crop[0], grid_crop[0], coeffi_crop[0], pr_grid_proj[0], ftr[0], ftr_mask[0], obj_dist[0])
+            # loss_dict[3], gt_proj = self.loss(gt_RT.clone(), pr_RT[3], pr_RT[4], K_crop[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], ftr[3], ftr_mask[3], obj_dist[3])
+            # loss_dict[2], gt_proj = self.loss(gt_RT.clone(), pr_RT[2], pr_RT[3], K_crop[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], ftr[2], ftr_mask[2], obj_dist[2])
+            # loss_dict[1], gt_proj = self.loss(gt_RT.clone(), pr_RT[1], pr_RT[2], K_crop[1], grid_crop[1], coeffi_crop[1], pr_grid_proj[1], ftr[1], ftr_mask[1], obj_dist[1])
+            loss_dict[0], gt_proj = self.loss(gt_RT.clone(), pr_RT[0], pr_RT[4], K_crop[0], grid_crop[0], coeffi_crop[0], pr_grid_proj_n, ftr[0], ftr_mask[0], obj_dist_n)
             
             import matplotlib.pyplot as plt
             aaa = gt_proj[0].mean(0).detach().cpu().numpy()
@@ -259,17 +277,16 @@ class ProjectivePose(BaseModel):
         ###### z-buffering
         gt_proj, gt_proj_indx = z_buffer_min(gt_ftr, gt_ftr_mask)
         
-        # loss = torch.norm((pr_grid_proj - gt_grid_proj.detach()), p=2, dim=-1).mean()
+        # loss = torch.norm((pr_grid_proj - gt_grid_proj.detach()), p=2, dim=-1).mean()     # --> loss with 3d grid
         loss = transforms.so3_relative_angle(pytorch3d_pr_RT[:, :3, :3], pytorch3d_gt_RT[:, :3, :3]).mean()
         pred_vxvyvz = TCO_to_vxvyvz(ppr_RT, pr_RT, K_crop)
         labe_vxvyvz = TCO_to_vxvyvz(ppr_RT, gt_RT, K_crop)
-        vx_loss = F.smooth_l1_loss(pred_vxvyvz[:, 0]/self.W, labe_vxvyvz[:, 0]/self.W)
-        vy_loss = F.smooth_l1_loss(pred_vxvyvz[:, 1]/self.H, labe_vxvyvz[:, 1]/self.H)
-        vz_loss = F.smooth_l1_loss(pred_vxvyvz[:, 2], labe_vxvyvz[:, 2])
+        vx_loss = F.l1_loss(pred_vxvyvz[:, 0], labe_vxvyvz[:, 0])
+        vy_loss = F.l1_loss(pred_vxvyvz[:, 1], labe_vxvyvz[:, 1])
+        vz_loss = F.l1_loss(pred_vxvyvz[:, 2], labe_vxvyvz[:, 2])
         loss += vx_loss + vy_loss + vz_loss
 
-        loss += F.mse_loss(obj_dist, obj_dist_gt.detach()) / 10
-        # loss = F.mse_loss(pr_grid_proj, gt_grid_proj)          # --> loss with 3d grid
+        # loss += F.mse_loss(obj_dist, obj_dist_gt.detach()) / 10 
         return loss, gt_proj
 
     def projective_pose(self, previous_RT, scale, ftr, ftr_mask, img_feature, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex):
@@ -295,7 +312,11 @@ class ProjectivePose(BaseModel):
         pr_ftr_mask = F.grid_sample(ftr_mask, pr_grid_proj, mode='bilinear')
 
         ###### z-buffering
-        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
+        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr_mask, pr_ftr_mask)
+        pr_proj = pr_proj.mean(1, True)
+        pr_proj = pr_proj - pr_proj.min()
+        pr_proj = pr_proj/pr_proj.max()
+
 
         ####### get RoI feature from image    
         bboxes_img_feature = bboxes_crop * (torch.tensor(img_feature.shape[-2:])/torch.tensor([self.H, self.W])).unsqueeze(0).repeat(1, 2).to(bboxes_crop.device)
@@ -311,7 +332,36 @@ class ProjectivePose(BaseModel):
 
         ###### update pose
         next_RT = self.update_pose(previous_RT, K_crop, prediction)
-        return next_RT, grid_crop, coeffi_crop, pr_grid_proj, pr_proj, roi_feature, obj_dist, K_crop
+
+
+        ###### grid zoom-in & grid distance change
+
+        obj_dist_n = torch.norm(next_RT[:, :3, 3], 2, -1)
+        # print(obj_dist)
+        grid_proj_origin_n = grid_crop + coeffi_crop * obj_dist_n.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        
+        ###### Projective Grid Generator
+        grid_proj_origin_n_shape = grid_proj_origin_n.shape
+        grid_proj_origin_n = grid_proj_origin_n.flatten(1, 3)        
+
+        pytorch3d_next_RT = change_RT(next_RT, self.R_comp.to(next_RT.device))
+        pytorch3d_next_RT_inv = pytorch3d_next_RT.inverse()
+        pr_tf_n = Transform3d(matrix=pytorch3d_next_RT_inv)
+        pr_grid_proj_n = pr_tf_n.transform_points(grid_proj_origin_n).reshape(grid_proj_origin_n_shape)
+
+        ###### Grid Sampler
+        # ftr = torch.flip(ftr, [2, 3, 4])
+        # ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
+        pr_ftr_n = F.grid_sample(ftr, pr_grid_proj_n, mode='bilinear')
+        pr_ftr_mask_n = F.grid_sample(ftr_mask, pr_grid_proj_n, mode='bilinear')
+
+        ###### z-buffering
+        pr_proj_n, pr_proj_indx = z_buffer_min(pr_ftr_mask_n, pr_ftr_mask_n)
+        pr_proj_n = pr_proj_n.mean(1, True)
+
+
+
+        return next_RT, grid_crop, coeffi_crop, pr_grid_proj, pr_proj, roi_feature, obj_dist, K_crop, pr_proj_n, pr_grid_proj_n, obj_dist_n
 
 
 
@@ -324,6 +374,7 @@ class ProjectivePose(BaseModel):
             vxvyvz = pose_outputs[:, 4:7]
         else:
             raise ValueError(f'pose_dim={self.pose_dim} not supported')
+        vxvyvz = vxvyvz * self.vxvyvz_W_scaler.repeat(vxvyvz.shape[0], 1).to(vxvyvz.device) * self.vxvyvz_H_scaler.repeat(vxvyvz.shape[0], 1).to(vxvyvz.device)
         TCO_updated = apply_imagespace_predictions(TCO, K_crop, vxvyvz, dR)
         return TCO_updated
 
