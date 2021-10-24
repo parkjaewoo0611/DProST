@@ -48,7 +48,6 @@ class Trainer(BaseTrainer):
 
             self.optimizer.zero_grad()
             loss_dict, prediction = self.model(images, front, top, right, masks, bboxes, obj_ids, RTs)
-            # loss = loss_dict['loss_classifier'] + loss_dict['loss_box_reg'] + loss_dict['loss_mask'] + loss_dict['loss_objectness'] + loss_dict['loss_rpn_box_reg']
             # output = self.model(images, targets)
             # loss = self.criterion(output, target)
             # loss = sum(loss_dict.values())
