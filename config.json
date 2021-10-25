@@ -12,7 +12,7 @@
         "type": "DataLoader",
         "args":{
             "data_dir": "../Dataset/LINEMOD",
-            "batch_size": 6,
+            "batch_size": 4,
             "obj_list" : [5],
             "img_ratio" : 0.5,
             "shuffle": true,
@@ -35,14 +35,14 @@
             "weight_decay": 0
         }
     },
-    "loss": "Geodesic loss",
+    "loss": "geodesic_vxvyvz_loss",
     "metrics": [
-        "accuracy", "ADD"
+        "accuracy", "top_k_acc"
     ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
-            "step_size": 50,
+            "step_size": 5000,
             "gamma": 0.1
         }
     },

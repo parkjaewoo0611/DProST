@@ -47,12 +47,15 @@ class Trainer(BaseTrainer):
             front, top, right = self.mesh_loader.batch_render(obj_ids)
 
             self.optimizer.zero_grad()
-            loss_dict, prediction = self.model(images, front, top, right, masks, bboxes, obj_ids, RTs)
-            # output = self.model(images, targets)
-            # loss = self.criterion(output, target)
-            # loss = sum(loss_dict.values())
-            loss = loss_dict[0] # + loss_dict[2] + loss_dict[1] + loss_dict[0]
-            # loss = loss_dict[0]
+            M, prediction = self.model(images, front, top, right, bboxes, obj_ids, RTs)
+            loss = 0
+            # for i, dict in enumerate(M):
+            #     idx = len(M) - (i + 1)
+            #     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx])
+            #     loss += self.criterion(RTs, **M[idx])
+            loss += self.criterion(prediction[4], prediction[0], RTs, **M[0])
+            # loss = self.criterion(RTs, **M[0])
+
             loss.backward()
             self.optimizer.step()
             # self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)

@@ -4,6 +4,7 @@ import pandas as pd
 from pathlib import Path
 from itertools import repeat
 from collections import OrderedDict
+import torch.nn.functional as F
 
 def ensure_dir(dirname):
     dirname = Path(dirname)
@@ -73,6 +74,7 @@ import matplotlib.pyplot as plt
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
 from pytorch3d.transforms.transform3d import Transform3d
 from pytorch3d.transforms import euler_angles_to_matrix
+from torchvision.ops import roi_align
 
 def TCO_symmetry(TCO_label, mesh_info_batch, continuous_symmetry_N=8):
     bsz = TCO_label.shape[0]
@@ -231,6 +233,20 @@ def imshow(img_list):
     plt.savefig('img_check.png')
     plt.cla() 
 
+# for change RT to pytorch3d style
+R_comp_pytorch3d = torch.eye(3, 3)[None]
+R_comp_pytorch3d[0, 0, 0] = -1
+R_comp_pytorch3d[0, 1, 1] = -1
+R_comp_pytorch3d.requires_grad = True
+def change_RT(RT):    
+    R_comp =  R_comp_pytorch3d.repeat(RT.shape[0], 1, 1).to(RT.device)
+    new_R = torch.bmm(R_comp, RT[:, :3, :3]).transpose(1, 2)
+    ################### T = -RC#########new_T = Rt @ T @ new_R = ###########3
+    new_T = torch.bmm(torch.bmm(RT[:, :3, :3].transpose(1, 2), RT[:, :3, 3].view(-1, 3, 1)).transpose(1, 2), new_R).transpose(1, 2).squeeze(2)
+    new_RT = torch.cat([torch.cat([new_R, new_T.unsqueeze(1)], 1), torch.tensor([0, 0, 0, 1]).unsqueeze(0).unsqueeze(2).repeat(R_comp.shape[0], 1, 1).to(new_R.device)], 2)
+    return new_RT
+
+
 def get_K_crop_resize(K, boxes, orig_size, crop_resize):
     """
     Adapted from https://github.com/BerkeleyAutomation/perception/blob/master/perception/camera_intrinsics.py
@@ -271,13 +287,10 @@ def get_K_crop_resize(K, boxes, orig_size, crop_resize):
     return new_K
 
 
-def crop_inputs(grids, coeffi, K, TCO, obs_boxes, output_size, points):
+def crop_inputs(grids, coeffi, K, obs_boxes, output_size):
     boxes_crop, grid_cropped, coeffi_cropped = deepim_crops(grids=grids,
                                                             coefficients=coeffi,
                                                             obs_boxes=obs_boxes,
-                                                            K=K,
-                                                            TCO_pred=TCO,
-                                                            O_vertices=points,
                                                             output_size=output_size,
                                                             lamb=1.1)
     K_crop = get_K_crop_resize(K=K.clone(),
@@ -287,7 +300,7 @@ def crop_inputs(grids, coeffi, K, TCO, obs_boxes, output_size, points):
     return grid_cropped, coeffi_cropped, K_crop.detach(), boxes_crop
 
 
-def deepim_crops(grids, coefficients, obs_boxes, K, TCO_pred, O_vertices, output_size=None, lamb=1.4):
+def deepim_crops(grids, coefficients, obs_boxes, output_size=None, lamb=1.4):
     batch_size, _, h, w, _ = grids.shape
     device = grids.device
     if output_size is None:
@@ -402,6 +415,65 @@ def apply_imagespace_predictions(TCO, K, vxvyvz, dRCO):
     # TC1' = TC2' @  T2'1' where TC2' = T22' = dCRO is predicted and T2'1'=T21=TC1
     TCO_out[:, :3, :3] = dRCO @ TCO[:, :3, :3]
     return TCO_out
+
+
+def z_buffer_max(ftr, mask):
+    z_grid = torch.arange(ftr.shape[2]).unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[3], ftr.shape[4]).to(ftr.device)
+    index = mask.squeeze(1) * z_grid.unsqueeze(0)
+    index = torch.max(index, 1).indices
+    img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
+    return img, index
+
+
+def z_buffer_min(ftr, mask):
+    z_grid = (ftr.shape[2] - 1) - torch.arange(ftr.shape[2]).unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[3], ftr.shape[4]).to(ftr.device)
+    index = mask.squeeze(1) * z_grid.unsqueeze(0)
+    index = torch.max(index, 1).indices
+    img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
+    return img, index
+
+
+def ProST_grid(H, W, f, cx, cy, rc_pts):
+    meshgrid = torch.meshgrid(torch.range(0, H-1), torch.range(0, W-1))
+    X = (cx - meshgrid[1])
+    Y = (cy - meshgrid[0])
+    Z = torch.ones_like(X) * f
+    XYZ = torch.cat((X.unsqueeze(2), Y.unsqueeze(2), Z.unsqueeze(2)), -1)
+    L = torch.norm(XYZ, dim=-1)
+
+    dist_min = -1
+    dist_max = 1
+    step_size = (dist_max - dist_min) / rc_pts
+    steps = torch.arange(dist_min, dist_max - step_size/2, step_size)
+    normalized_XYZ = XYZ.unsqueeze(0).repeat(rc_pts, 1, 1, 1) / L.unsqueeze(0).unsqueeze(3).repeat(rc_pts, 1, 1, 1)
+    ProST_grid = steps.unsqueeze(1).unsqueeze(2).unsqueeze(3) * normalized_XYZ
+
+    return ProST_grid.unsqueeze(0), normalized_XYZ.unsqueeze(0)
+
+def grid_sampler(ftr, ftr_mask, grid):
+    ###### Grid Sampler
+    ftr = torch.flip(ftr, [2, 3, 4])
+    ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
+    pr_ftr = F.grid_sample(ftr, grid, mode='bilinear')
+    pr_ftr_mask = F.grid_sample(ftr_mask, grid, mode='bilinear')
+    return pr_ftr, pr_ftr_mask
+
+def grid_transformer(grid, RT):
+    ###### Projective Grid Generator
+    grid_shape = grid.shape
+    grid = grid.flatten(1, 3)        
+    pytorch3d_RT = change_RT(RT)
+    pytorch3d_RT_inv = pytorch3d_RT.inverse()
+    transformer = Transform3d(matrix=pytorch3d_RT_inv)
+    transformed_grid = transformer.transform_points(grid).reshape(grid_shape)
+    return transformed_grid
+
+def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
+    bboxes_img_feature = bboxes_crop * (torch.tensor(img_feature.shape[-2:])/torch.tensor(original_size)).unsqueeze(0).repeat(1, 2).to(bboxes_crop.device)
+    idx = torch.arange(bboxes_img_feature.shape[0]).to(torch.float).unsqueeze(1).to(bboxes_img_feature.device)
+    bboxes_img_feature = torch.cat([idx, bboxes_img_feature], 1).to(torch.float) # bboxes_img_feature.shape --> [N, 5] and first column is index of batch for region
+    roi_feature = roi_align(img_feature, bboxes_img_feature, output_size=output_size, sampling_ratio=4)
+    return roi_feature
 
 
 def image_mean_std_check(dataloader):
@@ -526,3 +598,4 @@ UNIT_CUBE_VERTEX = torch.tensor(
      [-1, -1, -1]]
      , dtype=torch.float
 )
+

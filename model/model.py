@@ -1,44 +1,27 @@
-from pytorch3d.transforms.transform3d import Transform3d
-from torch.hub import load_state_dict_from_url
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import torchvision.models as models
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-from torchvision.models.detection.mask_rcnn import MaskRCNN, MaskRCNNPredictor, MaskRCNNHeads
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
-from torchvision.models.detection.anchor_utils import AnchorGenerator
-from torchvision.ops import MultiScaleRoIAlign, roi_align
-from torchvision.transforms.functional import resize
-import torchvision.utils
-
-from collections import OrderedDict
-
-import torch
-from torch.jit.annotations import Tuple, List, Dict, Optional
-
+from pytorch3d.transforms.transform3d import Transform3d
 from pytorch3d.transforms import (
     random_rotations, rotation_6d_to_matrix, euler_angles_to_matrix,
     so3_relative_angle, quaternion_to_matrix, quaternion_multiply, matrix_to_euler_angles
 )
-from pytorch3d import transforms
-from pytorch3d.renderer import (
-    OrthographicCameras, RasterizationSettings, MeshRenderer,
-    MeshRasterizer, HardPhongShader, TexturesVertex,
-    get_world_to_view_transform, PerspectiveCameras
-)
+
+
 import numpy as np
 from base import BaseModel
 from utils.util import (
-    apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, TCO_to_vxvyvz, add_noise,
-    FX, FY, PX, PY, UNIT_CUBE_VERTEX
+    apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, add_noise,
+    FX, FY, PX, PY, UNIT_CUBE_VERTEX, change_RT, z_buffer_min, grid_sampler, grid_transformer, get_roi_feature, ProST_grid
 )
 class LocalizationNetwork(nn.Module):
     def __init__(self):
         super().__init__()
         backbone = models.resnet18(pretrained=False)
         backbone = nn.Sequential(*(list(backbone.children())[:-2]))
-        backbone[0] = nn.Conv2d(1+3, 64, 3, 2, 2)
+        backbone[0] = nn.Conv2d(3+256, 64, 3, 2, 2)
         setattr(backbone, "n_features", 512)
         self.model = backbone
 
@@ -94,11 +77,11 @@ class ProjectivePose(BaseModel):
                                [ 0,  0,  1]])
 
         # feature size of each level
-        self.scale = {
-            0: 4, 
-            1: 8, 
-            2: 16, 
-            3: 32
+        self.size = {
+            0: self.render_size//4, 
+            1: self.render_size//8, 
+            2: self.render_size//16, 
+            3: self.render_size//32
             }
 
         self.proj_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
@@ -115,32 +98,26 @@ class ProjectivePose(BaseModel):
 
         # orthographic pool top grid
         self.grid_f = {
-            0: F.affine_grid(RT_f[:, :3, :], [1, 1, self.render_size//self.scale[0], self.render_size//self.scale[0], self.render_size//self.scale[0]]),         ## -1 ~ 1 is valid area
-            1: F.affine_grid(RT_f[:, :3, :], [1, 1, self.render_size//self.scale[1], self.render_size//self.scale[1], self.render_size//self.scale[1]]),         ## -1 ~ 1 is valid area
-            2: F.affine_grid(RT_f[:, :3, :], [1, 1, self.render_size//self.scale[2], self.render_size//self.scale[2], self.render_size//self.scale[2]]),         ## -1 ~ 1 is valid area
-            3: F.affine_grid(RT_f[:, :3, :], [1, 1, self.render_size//self.scale[3], self.render_size//self.scale[3], self.render_size//self.scale[3]]),         ## -1 ~ 1 is valid area
+            0: F.affine_grid(RT_f[:, :3, :], [1, 1, self.size[0], self.size[0], self.size[0]]),         ## -1 ~ 1 is valid area
+            1: F.affine_grid(RT_f[:, :3, :], [1, 1, self.size[1], self.size[1], self.size[1]]),         ## -1 ~ 1 is valid area
+            2: F.affine_grid(RT_f[:, :3, :], [1, 1, self.size[2], self.size[2], self.size[2]]),         ## -1 ~ 1 is valid area
+            3: F.affine_grid(RT_f[:, :3, :], [1, 1, self.size[3], self.size[3], self.size[3]]),         ## -1 ~ 1 is valid area
         }
 
         # orthographic pool right grid
         self.grid_r = {
-            0: F.affine_grid(RT_r[:, :3, :], [1, 1, self.render_size//self.scale[0], self.render_size//self.scale[0], self.render_size//self.scale[0]]),         ## -1 ~ 1 is valid area
-            1: F.affine_grid(RT_r[:, :3, :], [1, 1, self.render_size//self.scale[1], self.render_size//self.scale[1], self.render_size//self.scale[1]]),         ## -1 ~ 1 is valid area
-            2: F.affine_grid(RT_r[:, :3, :], [1, 1, self.render_size//self.scale[2], self.render_size//self.scale[2], self.render_size//self.scale[2]]),         ## -1 ~ 1 is valid area
-            3: F.affine_grid(RT_r[:, :3, :], [1, 1, self.render_size//self.scale[3], self.render_size//self.scale[3], self.render_size//self.scale[3]]),         ## -1 ~ 1 is valid area
+            0: F.affine_grid(RT_r[:, :3, :], [1, 1, self.size[0], self.size[0], self.size[0]]),         ## -1 ~ 1 is valid area
+            1: F.affine_grid(RT_r[:, :3, :], [1, 1, self.size[1], self.size[1], self.size[1]]),         ## -1 ~ 1 is valid area
+            2: F.affine_grid(RT_r[:, :3, :], [1, 1, self.size[2], self.size[2], self.size[2]]),         ## -1 ~ 1 is valid area
+            3: F.affine_grid(RT_r[:, :3, :], [1, 1, self.size[3], self.size[3], self.size[3]]),         ## -1 ~ 1 is valid area
         }
-
-        # for change RT to pytorch3d style
-        self.R_comp = torch.eye(3, 3)[None]
-        self.R_comp[0, 0, 0] = -1
-        self.R_comp[0, 1, 1] = -1
-        self.R_comp.requires_grad = True
 
         self.vxvyvz_W_scaler = torch.tensor([self.W, 1, 1]).unsqueeze(0)
         self.vxvyvz_H_scaler = torch.tensor([1, self.H, 1]).unsqueeze(0)
 
 
 
-    def forward(self, images, front, top, right, masks, bboxes, obj_ids, gt_RT=None):
+    def forward(self, images, front, top, right, bboxes, obj_ids, gt_RT):
         bsz = images.shape[0]
         K_batch = self.K.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
         unit_cube_vertex = UNIT_CUBE_VERTEX.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
@@ -148,9 +125,24 @@ class ProjectivePose(BaseModel):
         coefficient = self.coefficient.repeat(bsz, 1, 1, 1, 1).to(bboxes.device)
         
         ####################### 3D feature module ########################################
-
-        ftr = {}
-        ftr_mask = {}
+        M = [{}, {}, {}, {}]
+        pr_RT = {}
+        """
+        # M = [
+            {
+                'ftr': ftr, 
+                'ftr_mask': ftr_mask, 
+                'grid_crop': grid_crop, 
+                'coeffi_crop': coeffi_crop,
+                'pr_grid_proj': pr_grid_proj,
+                'pr_proj': pr_proj,
+                'roi_feature': roi_feature,
+                'obj_dist': obj_dist,
+                'K_crop': K_crop,
+                'bboxes_crop': bboxes_crop
+            }, ...
+        # ]
+        """
 
         front = front.permute(0, 3, 1, 2)
         top = top.permute(0, 3, 1, 2)
@@ -164,10 +156,10 @@ class ProjectivePose(BaseModel):
         ftr_img = torch.cat((f_img, t_img, r_img))
         ftr_feature = self.proj_backbone(ftr_img)
 
-        ftr[3], ftr_mask[3] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['3'].clone(), bsz, 0), 3)       
-        ftr[2], ftr_mask[2] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['2'].clone(), bsz, 0), 2)   
-        ftr[1], ftr_mask[1] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['1'].clone(), bsz, 0), 1)
-        ftr[0], ftr_mask[0] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['0'].clone(), bsz, 0), 0)
+        M[3]['ftr'], M[3]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['3'].clone(), bsz, 0), 3)       
+        M[2]['ftr'], M[2]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['2'].clone(), bsz, 0), 2)   
+        M[1]['ftr'], M[1]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['1'].clone(), bsz, 0), 1)
+        M[0]['ftr'], M[0]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature['0'].clone(), bsz, 0), 0)
  
 
         ####################### image feature module #####################################
@@ -188,181 +180,99 @@ class ProjectivePose(BaseModel):
         plt.imsave('image.png', bb)
 
         ######################## initial pose estimate ##############################
-        pr_RT = {}
-        grid_crop = {}
-        coeffi_crop = {}
-        pr_grid_proj = {}
-        loss_dict = {}
-        obj_dist = {}
-        K_crop = {}
         pr_RT[4] = RT_from_boxes(bboxes, K_batch).detach()  
-        # pr_RT[4] = gt_RT
-        # pr_RT[4] = add_noise(gt_RT, euler_deg_std=[0, 0, 0], trans_std=[0.3, 0, 0])
+        
+        # RT[4] = gt_RT
+        
+        # RT[4] = add_noise(gt_RT, euler_deg_std=[0, 0, 0], trans_std=[0.3, 0, 0])
+
         # const = torch.zeros_like(gt_RT)
         # const[:,:3,3] = -0.5
-        # pr_RT[4] = gt_RT + const 
+        # RT[4] = gt_RT + const 
+
         ####################### Projective STN #####################################
-        # pr_RT[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], pr_proj, roi_feature, obj_dist[3], K_crop[3] = self.projective_pose(pr_RT[4], self.scale[3], ftr[3], ftr_mask[3], img_feature['3'], projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        # pr_RT[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], pr_proj, roi_feature, obj_dist[2], K_crop[2] = self.projective_pose(pr_RT[3], self.scale[2], ftr[2], ftr_mask[2], img_feature['2'], projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        # pr_RT[1], grid_crop[1], coeffi_crop[1], pr_grid_proj[1], pr_proj, roi_feature, obj_dist[1], K_crop[1] = self.projective_pose(pr_RT[2], self.scale[1], ftr[1], ftr_mask[1], img_feature['1'], projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        # pr_RT[0], grid_crop[0], coeffi_crop[0], pr_grid_proj[0], pr_proj, roi_feature, obj_dist[0], K_crop[0] = self.projective_pose(pr_RT[1], self.scale[0], ftr[0], ftr_mask[0], img_feature['0'], projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
+        ###### grid zoom-in 
+        # M[3]['grid_crop'], M[3]['coeffi_crop'], M[3]['K_crop'], M[3]['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.size[3], self.size[3]))
+        # M[2]['grid_crop'], M[2]['coeffi_crop'], M[2]['K_crop'], M[2]['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.size[2], self.size[2]))
+        # M[1]['grid_crop'], M[1]['coeffi_crop'], M[1]['K_crop'], M[1]['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.size[1], self.size[1]))
+        M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['K_crop'], M[0]['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.size[0], self.size[0]))
 
-
-        # pr_RT[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], pr_proj, roi_feature, obj_dist[3], K_crop[3] = self.projective_pose(pr_RT[4], self.scale[3], ftr[3], ftr_mask[3], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        # pr_RT[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], pr_proj, roi_feature, obj_dist[2], K_crop[2] = self.projective_pose(pr_RT[3], self.scale[2], ftr[2], ftr_mask[2], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        # pr_RT[1], grid_crop[1], coeffi_crop[1], pr_grid_proj[1], pr_proj, roi_feature, obj_dist[1], K_crop[1] = self.projective_pose(pr_RT[2], self.scale[1], ftr[1], ftr_mask[1], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
-        pr_RT[0], grid_crop[0], coeffi_crop[0], pr_grid_proj[0], pr_proj, roi_feature, obj_dist[0], K_crop[0], pr_proj_n, pr_grid_proj_n, obj_dist_n = self.projective_pose(pr_RT[4], self.scale[0], ftr[0], ftr_mask[0], images, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex)
+        resized_img = F.interpolate(images, (60, 80), mode='bilinear')
+        # pr_RT[3], M[3]['pr_grid_proj'], M[3]['pr_proj'], M[3]['roi_feature'], M[3]['obj_dist'] = self.projective_pose(pr_RT[4], M[3]['ftr'], M[3]['ftr_mask'], img_feature['3'], M[3]['grid_crop'], M[3]['coeffi_crop'], M[3]['K_crop'], M[3]['bboxes_crop'])
+        # pr_RT[2], M[2]['pr_grid_proj'], M[2]['pr_proj'], M[2]['roi_feature'], M[2]['obj_dist'] = self.projective_pose(pr_RT[3], M[2]['ftr'], M[2]['ftr_mask'], img_feature['2'], M[2]['grid_crop'], M[2]['coeffi_crop'], M[2]['K_crop'], M[2]['bboxes_crop'])
+        # pr_RT[1], M[1]['pr_grid_proj'], M[1]['pr_proj'], M[1]['roi_feature'], M[1]['obj_dist'] = self.projective_pose(pr_RT[2], M[1]['ftr'], M[1]['ftr_mask'], img_feature['1'], M[1]['grid_crop'], M[1]['coeffi_crop'], M[1]['K_crop'], M[1]['bboxes_crop'])
+        pr_RT[0], M[0]['pr_grid_proj'], M[0]['pr_proj'], M[0]['roi_feature'], M[0]['obj_dist'] = self.projective_pose(pr_RT[4], M[0]['ftr'], M[0]['ftr_mask'], resized_img, M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['K_crop'], M[0]['bboxes_crop'])
 
         import matplotlib.pyplot as plt
-        aaa = pr_proj[0].mean(0).detach().cpu().numpy()
+        aaa = M[0]['pr_proj'][0].mean(0).detach().cpu().numpy()
         bb = (aaa - aaa.min())
         bb = bb/(bb.max() + 1e-6)
         plt.imsave('input.png', bb)
 
-
         import matplotlib.pyplot as plt
-        aaa = pr_proj_n[0].mean(0).detach().cpu().numpy()
-        bb = (aaa - aaa.min())
-        bb = bb/(bb.max() + 1e-6)
-        plt.imsave('prediction.png', bb)
-
-        import matplotlib.pyplot as plt
-        aaa = roi_feature[0].detach().cpu().permute(1, 2, 0).numpy()
+        aaa = M[0]['roi_feature'][0].permute(1, 2, 0).detach().cpu().numpy()
         bb = (aaa - aaa.min())
         bb = bb/(bb.max() + 1e-6)
         plt.imsave('roi_feature.png', bb)
 
-        # import matplotlib.pyplot as plt
-        # aaa = img_feature['0'][0].mean(0).detach().cpu().numpy()
-        # bb = (aaa - aaa.min())
-        # bb = bb/(bb.max() + 1e-6)
-        # plt.imsave('img_feature.png', bb)
 
-        if gt_RT is not None:
-            # loss_dict[3], gt_proj = self.loss(gt_RT.clone(), pr_RT[3], pr_RT[4], K_crop[3], grid_crop[3], coeffi_crop[3], pr_grid_proj[3], ftr[3], ftr_mask[3], obj_dist[3])
-            # loss_dict[2], gt_proj = self.loss(gt_RT.clone(), pr_RT[2], pr_RT[3], K_crop[2], grid_crop[2], coeffi_crop[2], pr_grid_proj[2], ftr[2], ftr_mask[2], obj_dist[2])
-            # loss_dict[1], gt_proj = self.loss(gt_RT.clone(), pr_RT[1], pr_RT[2], K_crop[1], grid_crop[1], coeffi_crop[1], pr_grid_proj[1], ftr[1], ftr_mask[1], obj_dist[1])
-            loss_dict[0], gt_proj = self.loss(gt_RT.clone(), pr_RT[0], pr_RT[4], K_crop[0], grid_crop[0], coeffi_crop[0], pr_grid_proj_n, ftr[0], ftr_mask[0], obj_dist_n)
-            
-            import matplotlib.pyplot as plt
-            aaa = gt_proj[0].mean(0).detach().cpu().numpy()
-            bb = (aaa - aaa.min())
-            bb = bb/(bb.max() + 1e-6)
-            plt.imsave('gt.png', bb)
-
-        return loss_dict, pr_RT
-
-    def loss(self, gt_RT, pr_RT, ppr_RT, K_crop, grid_crop, coeffi_crop, pr_grid_proj, ftr, ftr_mask, obj_dist):
-        ### grid to gt distance
-        obj_dist_gt = torch.norm(gt_RT[:, :3, 3], 2, -1)
-        # print(obj_dist_gt)
-        grid_proj_origin_gt = grid_crop + coeffi_crop * obj_dist_gt.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
-        
-        ### transform grid to gt grid
-        grid_proj_gt_shape = grid_proj_origin_gt.shape
-        grid_proj_origin_gt = grid_proj_origin_gt.flatten(1, 3)
-
-        pytorch3d_pr_RT = change_RT(pr_RT, self.R_comp.to(pr_RT.device))
-        pytorch3d_gt_RT = change_RT(gt_RT, self.R_comp.to(gt_RT.device))
-        pytorch3d_gt_RT_inv = pytorch3d_gt_RT.inverse()
-        gt_tf = Transform3d(matrix=pytorch3d_gt_RT_inv)
-        gt_grid_proj = gt_tf.transform_points(grid_proj_origin_gt).reshape(grid_proj_gt_shape)
-
-        ###### Grid Sampler
-        ftr = torch.flip(ftr, [2, 3, 4])
-        ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
-        gt_ftr = F.grid_sample(ftr, gt_grid_proj, mode='bilinear')
-        gt_ftr_mask = F.grid_sample(ftr_mask, gt_grid_proj, mode='bilinear')
-
-        ###### z-buffering
-        gt_proj, gt_proj_indx = z_buffer_min(gt_ftr, gt_ftr_mask)
-        
-        # loss = torch.norm((pr_grid_proj - gt_grid_proj.detach()), p=2, dim=-1).mean()     # --> loss with 3d grid
-        loss = transforms.so3_relative_angle(pytorch3d_pr_RT[:, :3, :3], pytorch3d_gt_RT[:, :3, :3]).mean()
-        pred_vxvyvz = TCO_to_vxvyvz(ppr_RT, pr_RT, K_crop)
-        labe_vxvyvz = TCO_to_vxvyvz(ppr_RT, gt_RT, K_crop)
-        vx_loss = F.l1_loss(pred_vxvyvz[:, 0], labe_vxvyvz[:, 0])
-        vy_loss = F.l1_loss(pred_vxvyvz[:, 1], labe_vxvyvz[:, 1])
-        vz_loss = F.l1_loss(pred_vxvyvz[:, 2], labe_vxvyvz[:, 2])
-        loss += vx_loss + vy_loss + vz_loss
-
-        # loss += F.mse_loss(obj_dist, obj_dist_gt.detach()) / 10 
-        return loss, gt_proj
-
-    def projective_pose(self, previous_RT, scale, ftr, ftr_mask, img_feature, projstn_grid, coefficient, K_batch, bboxes, unit_cube_vertex):
-        ###### grid zoom-in & grid distance change
-        grid_crop, coeffi_crop, K_crop, bboxes_crop = crop_inputs(projstn_grid, coefficient, K_batch, previous_RT, bboxes, (self.render_size//scale, self.render_size//scale), unit_cube_vertex)
-        obj_dist = torch.norm(previous_RT[:, :3, 3], 2, -1)
-        # print(obj_dist)
-        grid_proj_origin = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
-        
+        #########################################################################################################################
+        ###### grid distance change
+        obj_dist = torch.norm(pr_RT[0][:, :3, 3], 2, -1)
+        grid_proj_origin = M[0]['grid_crop'] + M[0]['coeffi_crop'] * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
         ###### Projective Grid Generator
-        grid_proj_shape = grid_proj_origin.shape
-        grid_proj_origin = grid_proj_origin.flatten(1, 3)        
-
-        pytorch3d_previous_RT = change_RT(previous_RT, self.R_comp.to(previous_RT.device))
-        pytorch3d_previous_RT_inv = pytorch3d_previous_RT.inverse()
-        pr_tf = Transform3d(matrix=pytorch3d_previous_RT_inv)
-        pr_grid_proj = pr_tf.transform_points(grid_proj_origin).reshape(grid_proj_shape)
-
-        ###### Grid Sampler
-        ftr = torch.flip(ftr, [2, 3, 4])
-        ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
-        pr_ftr = F.grid_sample(ftr, pr_grid_proj, mode='bilinear')
-        pr_ftr_mask = F.grid_sample(ftr_mask, pr_grid_proj, mode='bilinear')
-
+        pr_grid_proj = grid_transformer(grid_proj_origin, pr_RT[0])
+        ####### sample ftr to 2D
+        pr_ftr, pr_ftr_mask = grid_sampler(M[0]['ftr'], M[0]['ftr_mask'], pr_grid_proj)
         ###### z-buffering
-        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr_mask, pr_ftr_mask)
-        pr_proj = pr_proj.mean(1, True)
-        pr_proj = pr_proj - pr_proj.min()
-        pr_proj = pr_proj/pr_proj.max()
-
-
-        ####### get RoI feature from image    
-        bboxes_img_feature = bboxes_crop * (torch.tensor(img_feature.shape[-2:])/torch.tensor([self.H, self.W])).unsqueeze(0).repeat(1, 2).to(bboxes_crop.device)
-        idx = torch.arange(bboxes_img_feature.shape[0]).to(torch.float).unsqueeze(1).to(bboxes_img_feature.device)
-        bboxes_img_feature = torch.cat([idx, bboxes_img_feature], 1).to(torch.float) # bboxes_img_feature.shape --> [N, 5] and first column is index of batch for region
-        roi_feature = roi_align(img_feature, bboxes_img_feature, output_size=(pr_proj.shape[2], pr_proj.shape[3]), sampling_ratio=4)
+        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
         
+        import matplotlib.pyplot as plt
+        aaa = pr_proj[0].mean(0).detach().cpu().numpy()
+        bb = (aaa - aaa.min())
+        bb = bb/(bb.max() + 1e-6)
+        plt.imsave('prediction.png', bb)
+
+
+        ###### grid distance change
+        obj_dist = torch.norm(gt_RT[:, :3, 3], 2, -1)
+        grid_proj_origin = M[0]['grid_crop'] + M[0]['coeffi_crop'] * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
+        ###### Projective Grid Generator
+        pr_grid_proj = grid_transformer(grid_proj_origin, gt_RT)
+        ####### sample ftr to 2D
+        pr_ftr, pr_ftr_mask = grid_sampler(M[0]['ftr'], M[0]['ftr_mask'], pr_grid_proj)
+        ###### z-buffering
+        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
+        
+        import matplotlib.pyplot as plt
+        aaa = pr_proj[0].mean(0).detach().cpu().numpy()
+        bb = (aaa - aaa.min())
+        bb = bb/(bb.max() + 1e-6)
+        plt.imsave('gt.png', bb)
+        ########################################################################################################################
+
+        return M, pr_RT
+
+
+    def projective_pose(self, previous_RT, ftr, ftr_mask, img_feature, grid_crop, coeffi_crop, K_crop, bboxes_crop):
+        ###### grid distance change
+        obj_dist = torch.norm(previous_RT[:, :3, 3], 2, -1)
+        grid_proj_origin = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
+        ###### Projective Grid Generator
+        pr_grid_proj = grid_transformer(grid_proj_origin, previous_RT)
+        ####### sample ftr to 2D
+        pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
+        ###### z-buffering
+        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
+        ####### get RoI feature from image    
+        roi_feature = get_roi_feature(bboxes_crop, img_feature, (self.H, self.W), (pr_proj.shape[2], pr_proj.shape[3]))
         ###### concatenate
         loc_input = torch.cat((pr_proj, roi_feature), 1)
-        
         ###### Localization Network 
         prediction = self.local_network(loc_input)
-
         ###### update pose
         next_RT = self.update_pose(previous_RT, K_crop, prediction)
-
-
-        ###### grid zoom-in & grid distance change
-
-        obj_dist_n = torch.norm(next_RT[:, :3, 3], 2, -1)
-        # print(obj_dist)
-        grid_proj_origin_n = grid_crop + coeffi_crop * obj_dist_n.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
-        
-        ###### Projective Grid Generator
-        grid_proj_origin_n_shape = grid_proj_origin_n.shape
-        grid_proj_origin_n = grid_proj_origin_n.flatten(1, 3)        
-
-        pytorch3d_next_RT = change_RT(next_RT, self.R_comp.to(next_RT.device))
-        pytorch3d_next_RT_inv = pytorch3d_next_RT.inverse()
-        pr_tf_n = Transform3d(matrix=pytorch3d_next_RT_inv)
-        pr_grid_proj_n = pr_tf_n.transform_points(grid_proj_origin_n).reshape(grid_proj_origin_n_shape)
-
-        ###### Grid Sampler
-        # ftr = torch.flip(ftr, [2, 3, 4])
-        # ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
-        pr_ftr_n = F.grid_sample(ftr, pr_grid_proj_n, mode='bilinear')
-        pr_ftr_mask_n = F.grid_sample(ftr_mask, pr_grid_proj_n, mode='bilinear')
-
-        ###### z-buffering
-        pr_proj_n, pr_proj_indx = z_buffer_min(pr_ftr_mask_n, pr_ftr_mask_n)
-        pr_proj_n = pr_proj_n.mean(1, True)
-
-
-
-        return next_RT, grid_crop, coeffi_crop, pr_grid_proj, pr_proj, roi_feature, obj_dist, K_crop, pr_proj_n, pr_grid_proj_n, obj_dist_n
-
+        return next_RT, pr_grid_proj, pr_proj, roi_feature, obj_dist
 
 
     def update_pose(self, TCO, K_crop, pose_outputs):
@@ -383,24 +293,22 @@ class ProjectivePose(BaseModel):
         f_feature, t_feature, r_feature = feature
 
         ## 3d mask
-        f_mask_3d = F.interpolate(f_mask, (self.render_size//self.scale[level], self.render_size//self.scale[level])).unsqueeze(2).repeat(1, 1, self.render_size//self.scale[level], 1, 1)  
-        t_mask_3d = F.interpolate(t_mask, (self.render_size//self.scale[level], self.render_size//self.scale[level])).unsqueeze(2).repeat(1, 1, self.render_size//self.scale[level], 1, 1)  
-        r_mask_3d = F.interpolate(r_mask, (self.render_size//self.scale[level], self.render_size//self.scale[level])).unsqueeze(2).repeat(1, 1, self.render_size//self.scale[level], 1, 1)  
+        f_mask_3d = F.interpolate(f_mask, (self.size[level], self.size[level])).unsqueeze(2).repeat(1, 1, self.size[level], 1, 1)  
+        t_mask_3d = F.interpolate(t_mask, (self.size[level], self.size[level])).unsqueeze(2).repeat(1, 1, self.size[level], 1, 1)  
+        r_mask_3d = F.interpolate(r_mask, (self.size[level], self.size[level])).unsqueeze(2).repeat(1, 1, self.size[level], 1, 1)  
 
         grid_f = self.grid_f[level].clone().repeat(t_mask_3d.shape[0], 1, 1, 1, 1)
         grid_r = self.grid_r[level].clone().repeat(r_mask_3d.shape[0], 1, 1, 1, 1)
-        
+
         f_mask_3d = F.grid_sample(f_mask_3d, grid_f, mode='nearest')
         t_mask_3d = t_mask_3d
         r_mask_3d = F.grid_sample(r_mask_3d, grid_r, mode='nearest')
-
         ftr_mask_3d = f_mask_3d * t_mask_3d * r_mask_3d
 
         ## 3d image
-        f_3d = f_feature.unsqueeze(2).repeat(1, 1, self.render_size//self.scale[level], 1, 1)                
-        t_3d = t_feature.unsqueeze(2).repeat(1, 1, self.render_size//self.scale[level], 1, 1)
-        r_3d = r_feature.unsqueeze(2).repeat(1, 1, self.render_size//self.scale[level], 1, 1)
- 
+        f_3d = f_feature.unsqueeze(2).repeat(1, 1, self.size[level], 1, 1)                
+        t_3d = t_feature.unsqueeze(2).repeat(1, 1, self.size[level], 1, 1)
+        r_3d = r_feature.unsqueeze(2).repeat(1, 1, self.size[level], 1, 1)
 
         f_3d = F.grid_sample(f_3d, grid_f, mode='nearest')
         t_3d = t_3d
@@ -409,63 +317,3 @@ class ProjectivePose(BaseModel):
         ftr_3d = (f_3d + t_3d + r_3d) / 3   
         ftr_3d = ftr_3d * ftr_mask_3d
         return ftr_3d, ftr_mask_3d
-
-def ProST_grid(H, W, f, cx, cy, rc_pts):
-    meshgrid = torch.meshgrid(torch.range(0, H-1), torch.range(0, W-1))
-    X = (cx - meshgrid[1])
-    Y = (cy - meshgrid[0])
-    Z = torch.ones_like(X) * f
-    XYZ = torch.cat((X.unsqueeze(2), Y.unsqueeze(2), Z.unsqueeze(2)), -1)
-    L = torch.norm(XYZ, dim=-1)
-
-    dist_min = -1
-    dist_max = 1
-    step_size = (dist_max - dist_min) / rc_pts
-    steps = torch.arange(dist_min, dist_max - step_size/2, step_size)
-    normalized_XYZ = XYZ.unsqueeze(0).repeat(rc_pts, 1, 1, 1) / L.unsqueeze(0).unsqueeze(3).repeat(rc_pts, 1, 1, 1)
-    ProST_grid = steps.unsqueeze(1).unsqueeze(2).unsqueeze(3) * normalized_XYZ
-
-    return ProST_grid.unsqueeze(0), normalized_XYZ.unsqueeze(0)
-
-
-# def change_RT(RT, R_comp):    
-#     R_comp =  R_comp.repeat(RT.shape[0], 1, 1).to(RT.device)
-#     # new_RT = torch.eye(4).unsqueeze(0).repeat(RT.shape[0], 1, 1).to(RT.device)
-#     new_R = torch.bmm(R_comp, RT[:, :3, :3]).transpose(1, 2)
-#     ################### T = -RC#########new_T = Rt @ T @ new_R = ###########3
-#     new_T = torch.bmm(torch.bmm(RT[:, :3, :3].transpose(1, 2), RT[:, :3, 3].view(-1, 3, 1)).transpose(1, 2), new_R)
-#     new_RT = torch.cat([torch.cat([new_R, new_T], 1), torch.tensor([0, 0, 0, 1]).unsqueeze(0).unsqueeze(2).repeat(R_comp.shape[0], 1, 1).to(new_R.device)], 2)
-#     return new_RT
-
-def change_RT(RT, R_comp):    
-    R_comp =  R_comp.repeat(RT.shape[0], 1, 1)
-    new_R = torch.bmm(R_comp, RT[:, :3, :3]).transpose(1, 2)
-    ################### T = -RC#########new_T = Rt @ T @ new_R = ###########3
-    new_T = torch.bmm(torch.bmm(RT[:, :3, :3].transpose(1, 2), RT[:, :3, 3].view(-1, 3, 1)).transpose(1, 2), new_R).transpose(1, 2).squeeze(2)
-    new_RT = torch.cat([torch.cat([new_R, new_T.unsqueeze(1)], 1), torch.tensor([0, 0, 0, 1]).unsqueeze(0).unsqueeze(2).repeat(R_comp.shape[0], 1, 1).to(new_R.device)], 2)
-    return new_RT
-
-
-def z_buffer_max(ftr, mask):
-    z_grid = torch.arange(ftr.shape[2]).unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[3], ftr.shape[4]).to(ftr.device)
-    index = mask.squeeze(1) * z_grid.unsqueeze(0)
-    index = torch.max(index, 1).indices
-    img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
-    return img, index
-
-
-def z_buffer_min(ftr, mask):
-    z_grid = (ftr.shape[2] - 1) - torch.arange(ftr.shape[2]).unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[3], ftr.shape[4]).to(ftr.device)
-    index = mask.squeeze(1) * z_grid.unsqueeze(0)
-    index = torch.max(index, 1).indices
-    img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
-    return img, index
-
-def z_buffer_mean(ftr, mask):
-    # z_grid = (ftr.shape[2] - 1) - torch.arange(ftr.shape[2]).unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[3], ftr.shape[4]).to(ftr.device)
-    # index = mask.squeeze(1) * z_grid.unsqueeze(0)
-    # index = torch.max(index, 1).indices
-    # img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
-    index = None
-    img = ftr.mean(2)
-    return img, index
