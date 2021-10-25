@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torchvision.utils import make_grid
 from base import BaseTrainer
-from utils import inf_loop, MetricTracker, image_mean_std_check
+from utils import inf_loop, MetricTracker, image_mean_std_check, proj_visualize
 
 
 class Trainer(BaseTrainer):
@@ -45,6 +45,7 @@ class Trainer(BaseTrainer):
         for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
             images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
             front, top, right = self.mesh_loader.batch_render(obj_ids)
+            meshes = self.mesh_loader.batch_meshes(obj_ids)
 
             self.optimizer.zero_grad()
             M, prediction = self.model(images, front, top, right, bboxes, obj_ids, RTs)
@@ -54,29 +55,37 @@ class Trainer(BaseTrainer):
             #     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx])
             #     loss += self.criterion(RTs, **M[idx])
             loss += self.criterion(prediction[4], prediction[0], RTs, **M[0])
-            # loss = self.criterion(RTs, **M[0])
+            # loss += self.criterion(RTs, **M[0])
 
             loss.backward()
             self.optimizer.step()
-            # self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
-            # self.train_metrics.update('loss', loss.item())
-            # for met in self.metric_ftns:
-            #     self.train_metrics.update(met.__name__, met(output, target))
+            self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
+            self.train_metrics.update('loss', loss.detach().item())
+            for met in self.metric_ftns:
+                self.train_metrics.update(met.__name__, met(prediction, RTs, meshes, obj_ids))
 
             if batch_idx % self.log_step == 0:
                 self.logger.debug('Train Epoch: {} {} Loss: {:.6f}'.format(
                     epoch,
                     self._progress(batch_idx),
-                    loss.detach().item()))
-                # self.writer.add_image('input', make_grid(data.cpu(), nrow=8, normalize=True))
+                    loss.detach().item()))   
+
+                pr_proj_pred = proj_visualize(prediction[0], M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
+                pr_proj_labe = proj_visualize(RTs, M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
+
+                self.writer.add_image('image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
+                self.writer.add_image('input', make_grid(M[0]['pr_proj'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image('roi_feature', make_grid(M[0]['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image('prediction', make_grid(pr_proj_pred.detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image('gt', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
 
             if batch_idx == self.len_epoch:
                 break
         log = self.train_metrics.result()
 
-        # if self.do_validation:
-        #     val_log = self._valid_epoch(epoch)
-        #     log.update(**{'val_'+k : v for k, v in val_log.items()})
+        if self.do_validation:
+            val_log = self._valid_epoch(epoch)
+            log.update(**{'val_'+k : v for k, v in val_log.items()})
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
@@ -92,18 +101,34 @@ class Trainer(BaseTrainer):
         self.model.eval()
         self.valid_metrics.reset()
         with torch.no_grad():
-            for batch_idx, (images, targets) in enumerate(self.valid_data_loader):
-                images = [img.to(self.device) for img in images]
-                targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
 
-                output = self.model(images)
-                loss = self.criterion(output, targets)
+            for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.valid_data_loader):
+                images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
+                front, top, right = self.mesh_loader.batch_render(obj_ids)
+                meshes = self.mesh_loader.batch_meshes(obj_ids)
+
+                M, prediction = self.model(images, front, top, right, bboxes, obj_ids, RTs)
+                loss = 0
+                # for i, dict in enumerate(M):
+                #     idx = len(M) - (i + 1)
+                #     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx])
+                #     loss += self.criterion(RTs, **M[idx])
+                loss += self.criterion(prediction[4], prediction[0], RTs, **M[0])
+                # loss += self.criterion(RTs, **M[0])
 
                 self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
-                self.valid_metrics.update('loss', loss.item())
+                self.valid_metrics.update('loss', loss.detach().item())
                 for met in self.metric_ftns:
-                    self.valid_metrics.update(met.__name__, met(output, target))
-                self.writer.add_image('input', make_grid(data.cpu(), nrow=8, normalize=True))
+                    self.valid_metrics.update(met.__name__, met(prediction, RTs, meshes, obj_ids))
+
+                pr_proj_pred = proj_visualize(prediction[0], M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
+                pr_proj_labe = proj_visualize(RTs, M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
+
+                self.writer.add_image('image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
+                self.writer.add_image('input', make_grid(M[0]['pr_proj'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image('roi_feature', make_grid(M[0]['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image('prediction', make_grid(pr_proj_pred.detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image('gt', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
 
         # add histogram of model parameters to the tensorboard
         for name, p in self.model.named_parameters():

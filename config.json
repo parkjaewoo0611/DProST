@@ -37,7 +37,7 @@
     },
     "loss": "geodesic_vxvyvz_loss",
     "metrics": [
-        "accuracy", "top_k_acc"
+        "ADD_score"
     ],
     "lr_scheduler": {
         "type": "StepLR",
@@ -50,11 +50,11 @@
         "epochs": 10000,
 
         "save_dir": "saved/",
-        "save_period": 10000,
+        "save_period": 100,
         "verbosity": 2,
         
         "monitor": "min val_loss",
-        "early_stop": 10,
+        "early_stop": 100,
 
         "tensorboard": true
     }

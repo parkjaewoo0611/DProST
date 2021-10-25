@@ -144,6 +144,7 @@ class MeshesLoader():
 
 
     def batch_meshes(self, id_batch):
+        id_batch = id_batch.cpu().numpy()
         mesh_list = [self.MESH_DICT[id] for id in id_batch]
         verts_list = [mesh.verts_list()[0] for mesh in mesh_list]
         faces_list = [mesh.faces_list()[0] for mesh in mesh_list]
