@@ -475,6 +475,18 @@ def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
     roi_feature = roi_align(img_feature, bboxes_img_feature, output_size=output_size, sampling_ratio=4)
     return roi_feature
 
+def proj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
+    ###### grid distance change
+    obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
+    grid_proj_origin =grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
+    ###### Projective Grid Generator
+    pr_grid_proj = grid_transformer(grid_proj_origin, RT)
+    ####### sample ftr to 2D
+    pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
+    ###### z-buffering
+    pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
+    return pr_proj
+
 
 def image_mean_std_check(dataloader):
     mean = torch.zeros(3)

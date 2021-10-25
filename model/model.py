@@ -173,12 +173,6 @@ class ProjectivePose(BaseModel):
             ('pool', torch.Size([1, 256, 1, 1]))]
         """
 
-        import matplotlib.pyplot as plt
-        aaa = images[0].mean(0).detach().cpu().numpy()
-        bb = (aaa - aaa.min())
-        bb = bb/(bb.max() + 1e-6)
-        plt.imsave('image.png', bb)
-
         ######################## initial pose estimate ##############################
         pr_RT[4] = RT_from_boxes(bboxes, K_batch).detach()  
         
@@ -202,54 +196,6 @@ class ProjectivePose(BaseModel):
         # pr_RT[2], M[2]['pr_grid_proj'], M[2]['pr_proj'], M[2]['roi_feature'], M[2]['obj_dist'] = self.projective_pose(pr_RT[3], M[2]['ftr'], M[2]['ftr_mask'], img_feature['2'], M[2]['grid_crop'], M[2]['coeffi_crop'], M[2]['K_crop'], M[2]['bboxes_crop'])
         # pr_RT[1], M[1]['pr_grid_proj'], M[1]['pr_proj'], M[1]['roi_feature'], M[1]['obj_dist'] = self.projective_pose(pr_RT[2], M[1]['ftr'], M[1]['ftr_mask'], img_feature['1'], M[1]['grid_crop'], M[1]['coeffi_crop'], M[1]['K_crop'], M[1]['bboxes_crop'])
         pr_RT[0], M[0]['pr_grid_proj'], M[0]['pr_proj'], M[0]['roi_feature'], M[0]['obj_dist'] = self.projective_pose(pr_RT[4], M[0]['ftr'], M[0]['ftr_mask'], resized_img, M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['K_crop'], M[0]['bboxes_crop'])
-
-        import matplotlib.pyplot as plt
-        aaa = M[0]['pr_proj'][0].mean(0).detach().cpu().numpy()
-        bb = (aaa - aaa.min())
-        bb = bb/(bb.max() + 1e-6)
-        plt.imsave('input.png', bb)
-
-        import matplotlib.pyplot as plt
-        aaa = M[0]['roi_feature'][0].permute(1, 2, 0).detach().cpu().numpy()
-        bb = (aaa - aaa.min())
-        bb = bb/(bb.max() + 1e-6)
-        plt.imsave('roi_feature.png', bb)
-
-
-        #########################################################################################################################
-        ###### grid distance change
-        obj_dist = torch.norm(pr_RT[0][:, :3, 3], 2, -1)
-        grid_proj_origin = M[0]['grid_crop'] + M[0]['coeffi_crop'] * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
-        ###### Projective Grid Generator
-        pr_grid_proj = grid_transformer(grid_proj_origin, pr_RT[0])
-        ####### sample ftr to 2D
-        pr_ftr, pr_ftr_mask = grid_sampler(M[0]['ftr'], M[0]['ftr_mask'], pr_grid_proj)
-        ###### z-buffering
-        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
-        
-        import matplotlib.pyplot as plt
-        aaa = pr_proj[0].mean(0).detach().cpu().numpy()
-        bb = (aaa - aaa.min())
-        bb = bb/(bb.max() + 1e-6)
-        plt.imsave('prediction.png', bb)
-
-
-        ###### grid distance change
-        obj_dist = torch.norm(gt_RT[:, :3, 3], 2, -1)
-        grid_proj_origin = M[0]['grid_crop'] + M[0]['coeffi_crop'] * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
-        ###### Projective Grid Generator
-        pr_grid_proj = grid_transformer(grid_proj_origin, gt_RT)
-        ####### sample ftr to 2D
-        pr_ftr, pr_ftr_mask = grid_sampler(M[0]['ftr'], M[0]['ftr_mask'], pr_grid_proj)
-        ###### z-buffering
-        pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
-        
-        import matplotlib.pyplot as plt
-        aaa = pr_proj[0].mean(0).detach().cpu().numpy()
-        bb = (aaa - aaa.min())
-        bb = bb/(bb.max() + 1e-6)
-        plt.imsave('gt.png', bb)
-        ########################################################################################################################
 
         return M, pr_RT
 
