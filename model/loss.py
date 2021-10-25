@@ -27,5 +27,5 @@ def grid_distance_loss(in_RT, out_RT, gt_RT, grid_crop, coeffi_crop, **kwargs):
     gt_grid_proj = grid_transformer(grid_proj_origin_gt, gt_RT)
 
     loss = torch.norm((pr_grid_proj - gt_grid_proj.detach()), p=2, dim=-1).mean()     # --> loss with 3d grid
-    loss += F.mse_loss(obj_dist, obj_dist_gt.detach()) / 10 
+    loss += F.mse_loss(obj_dist, obj_dist_gt.detach())
     return loss

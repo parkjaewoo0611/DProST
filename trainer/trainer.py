@@ -27,6 +27,7 @@ class Trainer(BaseTrainer):
         self.do_validation = self.valid_data_loader is not None
         self.lr_scheduler = lr_scheduler
         self.log_step = int(np.sqrt(data_loader.batch_size))
+        self.vis_step = int(len(data_loader) / 4)
         self.mean, self.std = image_mean_std_check(self.data_loader)
 
         self.train_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
@@ -69,9 +70,9 @@ class Trainer(BaseTrainer):
                     self._progress(batch_idx),
                     loss.detach().item()))   
 
+            if batch_idx % int(len(self.data_loader) / 2) == 0:
                 pr_proj_pred = proj_visualize(prediction[0], M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
                 pr_proj_labe = proj_visualize(RTs, M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
-
                 self.writer.add_image('image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
                 self.writer.add_image('input', make_grid(M[0]['pr_proj'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
                 self.writer.add_image('roi_feature', make_grid(M[0]['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
@@ -119,9 +120,9 @@ class Trainer(BaseTrainer):
                 for met in self.metric_ftns:
                     self.valid_metrics.update(met.__name__, met(prediction, RTs, meshes, obj_ids))
 
+            if batch_idx % int(len(self.valid_data_loader) / 2) == 0:
                 pr_proj_pred = proj_visualize(prediction[0], M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
                 pr_proj_labe = proj_visualize(RTs, M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
-
                 self.writer.add_image('image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
                 self.writer.add_image('input', make_grid(M[0]['pr_proj'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
                 self.writer.add_image('roi_feature', make_grid(M[0]['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
