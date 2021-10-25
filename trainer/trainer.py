@@ -55,7 +55,6 @@ class Trainer(BaseTrainer):
             #     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx])
             #     loss += self.criterion(RTs, **M[idx])
             loss += self.criterion(prediction[4], prediction[0], RTs, **M[0])
-            # loss += self.criterion(RTs, **M[0])
 
             loss.backward()
             self.optimizer.step()
@@ -114,7 +113,6 @@ class Trainer(BaseTrainer):
                 #     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx])
                 #     loss += self.criterion(RTs, **M[idx])
                 loss += self.criterion(prediction[4], prediction[0], RTs, **M[0])
-                # loss += self.criterion(RTs, **M[0])
 
                 self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
                 self.valid_metrics.update('loss', loss.detach().item())

@@ -13,7 +13,13 @@ def geodesic_vxvyvz_loss(in_RT, out_RT, gt_RT, K_crop, **kwargs):
     loss += vx_loss + vy_loss + vz_loss
     return loss
 
-def grid_distance_loss(gt_RT, grid_crop, coeffi_crop, pr_grid_proj, obj_dist, **kwargs):
+def grid_distance_loss(in_RT, out_RT, gt_RT, grid_crop, coeffi_crop, **kwargs):
+    ###### grid distance change
+    obj_dist = torch.norm(out_RT[:, :3, 3], 2, -1)
+    grid_proj_origin = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+    ### transform grid to gt grid
+    pr_grid_proj = grid_transformer(grid_proj_origin, out_RT)
+
     ###### grid distance change
     obj_dist_gt = torch.norm(gt_RT[:, :3, 3], 2, -1)
     grid_proj_origin_gt = grid_crop + coeffi_crop * obj_dist_gt.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
