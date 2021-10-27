@@ -75,6 +75,7 @@ from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
 from pytorch3d.transforms.transform3d import Transform3d
 from pytorch3d.transforms import euler_angles_to_matrix
 from torchvision.ops import roi_align
+import cv2
 
 def TCO_symmetry(TCO_label, mesh_info_batch, continuous_symmetry_N=8):
     bsz = TCO_label.shape[0]
@@ -504,6 +505,18 @@ def image_mean_std_check(dataloader):
     print("mean: " + str(total_mean))
     print("std: " + str(total_std))
     return total_mean, total_std
+
+
+def contour_visualize(render, img, color=(0, 255, 0)):
+    render = ((render - np.min(render))/(np.max(render) - np.min(render)) * 255).astype(np.uint8)
+    img = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
+    rgb = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
+    gray = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
+    _, thr_image = cv2.threshold(gray, 250, 255, 0)
+    contours, hierarchy = cv2.findContours(thr_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    result = cv2.drawContours(rgb, contours, -1, color, 1)
+    return result
 
 LM_idx2class = {
     1: "ape",
