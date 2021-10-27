@@ -15,17 +15,20 @@ def geodesic_vxvyvz_loss(in_RT, out_RT, gt_RT, K_crop, **kwargs):
 
 def grid_distance_loss(in_RT, out_RT, gt_RT, grid_crop, coeffi_crop, **kwargs):
     ###### grid distance change
-    obj_dist = torch.norm(out_RT[:, :3, 3], 2, -1)
+    obj_dist = torch.sqrt(out_RT[:, :3, 3].pow(2).sum(-1) + 1e-6)           # --> to avoid nan in norm
     grid_proj_origin = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
     ### transform grid to gt grid
     pr_grid_proj = grid_transformer(grid_proj_origin, out_RT)
 
     ###### grid distance change
-    obj_dist_gt = torch.norm(gt_RT[:, :3, 3], 2, -1)
+    obj_dist_gt = torch.sqrt(gt_RT[:, :3, 3].pow(2).sum(-1) + 1e-6)         # --> to avoid nan in norm
     grid_proj_origin_gt = grid_crop + coeffi_crop * obj_dist_gt.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
     ### transform grid to gt grid
     gt_grid_proj = grid_transformer(grid_proj_origin_gt, gt_RT)
-
-    loss = torch.norm((pr_grid_proj - gt_grid_proj.detach()), p=2, dim=-1).mean()     # --> loss with 3d grid
+    
+    grid_subtract = pr_grid_proj - gt_grid_proj.detach()
+    loss = torch.sqrt(grid_subtract.pow(2).sum(-1) + 1e-6).mean()     # --> loss with 3d grid, sqrt(pow) to avoid nan in norm
     loss += F.mse_loss(obj_dist, obj_dist_gt.detach())
+    if not torch.isfinite(loss):
+        import ipdb; ipdb.set_trace()
     return loss

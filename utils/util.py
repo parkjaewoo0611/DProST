@@ -465,7 +465,7 @@ def grid_transformer(grid, RT):
     pytorch3d_RT = change_RT(RT)
     pytorch3d_RT_inv = pytorch3d_RT.inverse()
     transformer = Transform3d(matrix=pytorch3d_RT_inv)
-    transformed_grid = transformer.transform_points(grid).reshape(grid_shape)
+    transformed_grid = transformer.transform_points(grid, 1e-6).reshape(grid_shape)
     return transformed_grid
 
 def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
