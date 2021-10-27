@@ -27,7 +27,7 @@ class Trainer(BaseTrainer):
         self.do_validation = self.valid_data_loader is not None
         self.lr_scheduler = lr_scheduler
         self.log_step = int(np.sqrt(data_loader.batch_size))
-        self.vis_step = 10 #int(len(data_loader) / 4)
+        self.vis_step = int(len(data_loader) / 100)
         # self.mean, self.std = image_mean_std_check(self.data_loader)
 
         self.train_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
