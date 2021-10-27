@@ -6,13 +6,15 @@ import numpy as np
 import pickle
 from base import BaseDataLoader
 from utils.util import LM_idx2radius
+import random
+import torch.utils.data.dataset
 
 class DataLoader(BaseDataLoader):
     """
     DataLoader for pickle data which has location of images to load 
     and etc labels
     """
-    def __init__(self, data_dir, batch_size, obj_list, img_ratio=1.0, shuffle=True, validation_split=0.0, num_workers=1, training=True):
+    def __init__(self, data_dir, batch_size, obj_list, is_pbr=False, img_ratio=1.0, shuffle=True, validation_split=0.0, num_workers=1, training=True):
         H = int(480 * img_ratio)
         W = int(640 * img_ratio)
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(size=(H, W))])
@@ -21,8 +23,12 @@ class DataLoader(BaseDataLoader):
         self.drop_last = True
         
         if training:
+            with open(os.path.join(data_dir, 'train_pbr.pickle'), 'rb') as f:
+                dataset_pbr = pickle.load(f)
             with open(os.path.join(data_dir, 'train.pickle'), 'rb') as f:
-                self.dataset = pickle.load(f)
+                dataset = pickle.load(f)
+            dataset_pbr.extend(dataset * (len(dataset_pbr)//len(dataset)))
+            self.dataset = dataset_pbr
         else:
             with open(os.path.join(data_dir, 'test.pickle'), 'rb') as f:
                 self.dataset = pickle.load(f)
@@ -66,3 +72,29 @@ class DataLoader(BaseDataLoader):
         return images, masks, obj_ids, bboxes, RTs
         
 
+
+class MultipleDatasets(torch.utils.data.dataset.Dataset):
+    def __init__(self, datasets):
+        self.frame_step = 1
+        self.datasets = datasets
+        # The begin and end indexes of datasets
+        self.indexes = [0]
+        for dataset, repeat_times in datasets:
+            self.indexes.append(self.indexes[-1] + int(len(dataset) * repeat_times))
+
+    def __len__(self):
+        return self.indexes[-1]
+
+    def __getitem__(self, idx):
+        # Determine which dataset to use in self.datasets
+        dataset_idx = 0
+        for i, dataset_end_idx in enumerate(self.indexes):
+            if idx < dataset_end_idx:
+                dataset_idx = i - 1
+                break
+
+        dataset, repeat_times = self.datasets[dataset_idx]
+        if repeat_times >= 1:
+            return dataset[(idx - self.indexes[dataset_idx]) % len(dataset)]
+        else:
+            return dataset[random.randint(0, len(dataset) - 1)]
