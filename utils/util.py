@@ -72,7 +72,6 @@ import torchvision
 import numpy as np
 import matplotlib.pyplot as plt
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
-from pytorch3d.transforms.transform3d import Transform3d
 from pytorch3d.transforms import euler_angles_to_matrix
 from torchvision.ops import roi_align
 import cv2
@@ -234,18 +233,6 @@ def imshow(img_list):
     plt.savefig('img_check.png')
     plt.cla() 
 
-# for change RT to pytorch3d style
-R_comp_pytorch3d = torch.eye(3, 3)[None]
-R_comp_pytorch3d[0, 0, 0] = -1
-R_comp_pytorch3d[0, 1, 1] = -1
-R_comp_pytorch3d.requires_grad = True
-def change_RT(RT):    
-    R_comp =  R_comp_pytorch3d.repeat(RT.shape[0], 1, 1).to(RT.device)
-    new_R = torch.bmm(R_comp, RT[:, :3, :3]).transpose(1, 2)
-    ################### T = -RC#########new_T = Rt @ T @ new_R = ###########3
-    new_T = torch.bmm(torch.bmm(RT[:, :3, :3].transpose(1, 2), RT[:, :3, 3].view(-1, 3, 1)).transpose(1, 2), new_R).transpose(1, 2).squeeze(2)
-    new_RT = torch.cat([torch.cat([new_R, new_T.unsqueeze(1)], 1), torch.tensor([0, 0, 0, 1]).unsqueeze(0).unsqueeze(2).repeat(R_comp.shape[0], 1, 1).to(new_R.device)], 2)
-    return new_RT
 
 
 def get_K_crop_resize(K, boxes, orig_size, crop_resize):
@@ -455,19 +442,53 @@ def grid_sampler(ftr, ftr_mask, grid):
     ###### Grid Sampler
     ftr = torch.flip(ftr, [2, 3, 4])
     ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
-    pr_ftr = F.grid_sample(ftr, grid, mode='bilinear')
-    pr_ftr_mask = F.grid_sample(ftr_mask, grid, mode='bilinear')
+    pr_ftr = F.grid_sample(ftr, grid, mode='bilinear', align_corners=True)
+    pr_ftr_mask = F.grid_sample(ftr_mask, grid, mode='bilinear', align_corners=True)
     return pr_ftr, pr_ftr_mask
 
+# for change RT to pytorch3d style
+R_comp = torch.eye(4, 4)[None]
+R_comp[0, 0, 0] = -1
+R_comp[0, 1, 1] = -1
+R_comp.requires_grad = True
 def grid_transformer(grid, RT):
     ###### Projective Grid Generator
     grid_shape = grid.shape
-    grid = grid.flatten(1, 3)        
-    pytorch3d_RT = change_RT(RT)
-    pytorch3d_RT_inv = pytorch3d_RT.inverse()
-    transformer = Transform3d(matrix=pytorch3d_RT_inv)
-    transformed_grid = transformer.transform_points(grid, 1e-6).reshape(grid_shape)
+    grid = grid.flatten(1, 3)            
+    RT = torch.bmm(R_comp.repeat(RT.shape[0], 1, 1).to(RT.device), RT)
+    RT_inv = invert_T(RT)
+    transformed_grid = transform_pts(RT_inv, grid).reshape(grid_shape)
+
     return transformed_grid
+
+
+def transform_pts(T, pts):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
+    bsz = T.shape[0]
+    n_pts = pts.shape[1]
+    assert pts.shape == (bsz, n_pts, 3)
+    if T.dim() == 4:
+        pts = pts.unsqueeze(1)
+        assert T.shape[-2:] == (4, 4)
+    elif T.dim() == 3:
+        assert T.shape == (bsz, 4, 4)
+    else:
+        raise ValueError('Unsupported shape for T', T.shape)
+    pts = pts.unsqueeze(-1)
+    T = T.unsqueeze(-3)
+    pts_transformed = T[..., :3, :3] @ pts + T[..., :3, [-1]]
+    return pts_transformed.squeeze(-1)
+
+def invert_T(T):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
+    R = T[..., :3, :3]
+    t = T[..., :3, [-1]]
+    R_inv = R.transpose(-2, -1)
+    t_inv = - R_inv @ t
+    T_inv = T.clone()
+    T_inv[..., :3, :3] = R_inv
+    T_inv[..., :3, [-1]] = t_inv
+    return T_inv
 
 def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
     bboxes_img_feature = bboxes_crop * (torch.tensor(img_feature.shape[-2:])/torch.tensor(original_size)).unsqueeze(0).repeat(1, 2).to(bboxes_crop.device)

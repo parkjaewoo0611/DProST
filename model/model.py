@@ -14,7 +14,7 @@ import numpy as np
 from base import BaseModel
 from utils.util import (
     apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, add_noise,
-    FX, FY, PX, PY, UNIT_CUBE_VERTEX, change_RT, z_buffer_min, grid_sampler, grid_transformer, get_roi_feature, ProST_grid
+    FX, FY, PX, PY, UNIT_CUBE_VERTEX, z_buffer_min, grid_sampler, grid_transformer, get_roi_feature, ProST_grid
 )
 class LocalizationNetwork(nn.Module):
     def __init__(self):
@@ -58,23 +58,22 @@ class LocalizationNetwork(nn.Module):
         
 
 class ProjectivePose(BaseModel):
-    def __init__(self, img_ratio, render_size, pose_dim=9):
+    def __init__(self, img_ratio, render_size, pose_dim=9, N_z = 100):
         super(ProjectivePose, self).__init__()
         self.pose_dim = pose_dim
 
         # Projective STN default grid with camera parameter
-        self.H = 480 * img_ratio
-        self.W = 640 * img_ratio
+        self.H = int(480 * img_ratio)
+        self.W = int(640 * img_ratio)
         fx = FX * img_ratio
         fy = FY * img_ratio
         px = PX * img_ratio
         py = PY * img_ratio
-        N_z = 100
+        self.K = torch.tensor([[fx,  0, px],
+                              [ 0, fy, py],
+                              [ 0,  0,  1]])
         self.projstn_grid, self.coefficient = ProST_grid(self.H, self.W, (fx+fy)/2, px, py, N_z)
         self.render_size = render_size
-        self.K = torch.tensor([[fx,  0, px],
-                               [ 0, fy, py],
-                               [ 0,  0,  1]])
 
         # feature size of each level
         self.size = {
@@ -87,7 +86,6 @@ class ProjectivePose(BaseModel):
         self.proj_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
         self.image_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
         self.local_network = LocalizationNetwork()
-
 
         ### for Orthographic Pooling ###
         t0 = torch.tensor([0, 0, 0]).unsqueeze(0).unsqueeze(2)
@@ -114,7 +112,6 @@ class ProjectivePose(BaseModel):
 
         self.vxvyvz_W_scaler = torch.tensor([self.W, 1, 1]).unsqueeze(0)
         self.vxvyvz_H_scaler = torch.tensor([1, self.H, 1]).unsqueeze(0)
-
 
 
     def forward(self, images, front, top, right, bboxes, obj_ids, gt_RT):
