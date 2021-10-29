@@ -58,7 +58,7 @@ class LocalizationNetwork(nn.Module):
         
 
 class ProjectivePose(BaseModel):
-    def __init__(self, img_ratio, render_size, pose_dim=9, N_z = 100):
+    def __init__(self, img_ratio, render_size, start_level, end_level, pose_dim=9, N_z = 100):
         super(ProjectivePose, self).__init__()
         self.pose_dim = pose_dim
 
@@ -107,8 +107,10 @@ class ProjectivePose(BaseModel):
         self.vxvyvz_W_scaler = torch.tensor([self.W, 1, 1]).unsqueeze(0)
         self.vxvyvz_H_scaler = torch.tensor([1, self.H, 1]).unsqueeze(0)
 
+        self.start_level = start_level
+        self.end_level  = end_level
 
-    def forward(self, images, front, top, right, bboxes, obj_ids, gt_RT, start_level, end_level):
+    def forward(self, images, front, top, right, bboxes, obj_ids, gt_RT):
         bsz = images.shape[0]
         K_batch = self.K.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
         unit_cube_vertex = UNIT_CUBE_VERTEX.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
@@ -149,7 +151,7 @@ class ProjectivePose(BaseModel):
         ftr_img = torch.cat((f_img, t_img, r_img))
         ftr_feature = self.proj_backbone(ftr_img)
 
-        for level in range(start_level, end_level-1, -1):
+        for level in range(self.start_level, self.end_level-1, -1):
             M[level]['ftr'], M[level]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature[str(level)].clone(), bsz, 0), 1)
  
 
@@ -172,7 +174,7 @@ class ProjectivePose(BaseModel):
 
 
         ######################## initial pose estimate ##############################
-        pr_RT[start_level+1] = RT_from_boxes(bboxes, K_batch).detach()  
+        pr_RT[self.start_level+1] = RT_from_boxes(bboxes, K_batch).detach()  
         
         # RT[4] = gt_RT
         
@@ -189,7 +191,7 @@ class ProjectivePose(BaseModel):
         ####### get RoI feature from image    
         P['roi_feature'] = get_roi_feature(P['bboxes_crop'], images, (self.H, self.W), (self.render_size, self.render_size))
 
-        for level in range(start_level, end_level-1, -1):
+        for level in range(self.start_level, self.end_level-1, -1):
             M[level]['ftr'], M[level]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature[str(level)].clone(), bsz, 0), 1)
             pr_RT[level], M[level]['pr_proj'], M[level]['obj_dist'] = self.projective_pose(pr_RT[level+1], M[level]['ftr'], M[level]['ftr_mask'], P['roi_feature'], P['grid_crop'], P['coeffi_crop'], P['K_crop'])
 
