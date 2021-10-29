@@ -20,7 +20,7 @@ def top_k_acc(output, target, k=3):
     return correct / len(target)
 
 def ADD_score(prediction, RTs, meshes, ids):
-    TCO_output = prediction[0].detach()
+    TCO_output = prediction.detach()
     TCO_label = RTs.detach()
     points = meshes.verts_list()
     ids = ids.cpu().numpy()

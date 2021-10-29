@@ -235,7 +235,7 @@ def imshow(img_list):
 
 
 
-def get_K_crop_resize(K, boxes, orig_size, crop_resize):
+def get_K_crop_resize(K, boxes, crop_resize):
     """
     Adapted from https://github.com/BerkeleyAutomation/perception/blob/master/perception/camera_intrinsics.py
     Skew is not handled !
@@ -245,7 +245,7 @@ def get_K_crop_resize(K, boxes, orig_size, crop_resize):
     K = K.float()
     boxes = boxes.float()
     new_K = K.clone()
-    orig_size = torch.tensor(orig_size, dtype=torch.float)
+
     crop_resize = torch.tensor(crop_resize, dtype=torch.float)
     final_width, final_height = crop_resize[1], crop_resize[0]
     crop_width = boxes[:, 2] - boxes[:, 0]
@@ -283,7 +283,6 @@ def crop_inputs(grids, coeffi, K, obs_boxes, output_size):
                                                             lamb=1.1)
     K_crop = get_K_crop_resize(K=K.clone(),
                                boxes=boxes_crop,
-                               orig_size=[grids.shape[2], grids.shape[3]],
                                crop_resize=output_size)
     return grid_cropped, coeffi_cropped, K_crop.detach(), boxes_crop
 
