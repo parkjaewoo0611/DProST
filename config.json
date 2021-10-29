@@ -1,12 +1,12 @@
 {
     "name": "ProjectivePose",
-    "n_gpu": 1,
+    "gpu_id": "1",
     "arch": {
         "type": "ProjectivePose",
         "args": {
             "img_ratio": 0.5,
             "render_size": 128,
-            "start_level": 1,
+            "start_level": 3,
             "end_level": 0
         }
     },

@@ -13,7 +13,7 @@ import model.model as module_arch
 from parse_config import ConfigParser
 from trainer import Trainer
 from utils import prepare_device
-
+import os
 
 # fix random seeds for reproducibility
 SEED = 123
@@ -23,6 +23,11 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 def main(config):
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
+    # prepare for (multi-device) GPU training
+    device, device_ids = prepare_device(config['gpu_id'])
+
     logger = config.get_logger('train')
 
     # setup data_loader instances
@@ -35,9 +40,6 @@ def main(config):
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
     logger.info(model)
-
-    # prepare for (multi-device) GPU training
-    device, device_ids = prepare_device(config['n_gpu'])
     model = model.to(device)
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)
