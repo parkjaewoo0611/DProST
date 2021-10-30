@@ -44,15 +44,18 @@ def main(config):
     logger.info('Loading checkpoint: {} ...'.format(config.resume))
     checkpoint = torch.load(config.resume)
     state_dict = checkpoint['state_dict']
-    if config['n_gpu'] > 1:
-        model = torch.nn.DataParallel(model)
+
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
+
     model.load_state_dict(state_dict)
 
     # test result visualized folder
     result_path = os.fspath(config.resume).split('/')
     result_path[-4] = 'results'
     result_path = os.path.join(*result_path[:-1])
-    shutil.rmtree(result_path)
+    if os.path.isdir(result_path):
+        shutil.rmtree(result_path)
     os.makedirs(result_path, exist_ok=True)
 
     # prepare model for testing
@@ -63,42 +66,55 @@ def main(config):
     total_loss = 0.0
     total_metrics = torch.zeros(len(metric_fns))
 
+    start_level = config["arch"]["args"]["start_level"]
+    end_level = config["arch"]["args"]["end_level"]
+
     with torch.no_grad():
         for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(tqdm(data_loader)):
             images, masks, bboxes, RTs = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device)
             front, top, right = mesh_loader.batch_render(obj_ids)
             meshes = mesh_loader.batch_meshes(obj_ids)
 
-            M, prediction = model(images, front, top, right, bboxes, obj_ids, RTs)
+            M, prediction, P = model(images, front, top, right, bboxes, obj_ids, RTs)
 
             # computing loss, metrics on test set          
             loss = 0
-            # for i, dict in enumerate(M):
-            #     idx = len(M) - (i + 1)
-            #     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx])
-            #     loss += self.criterion(RTs, **M[idx])
-            loss += loss_fn(prediction[4], prediction[0], RTs, **M[0])
+            for idx in list(prediction.keys())[1:]:
+                loss += loss_fn(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
+
+            # loss += loss_fn(prediction[4], prediction[0], RTs, **M[0])
 
             batch_size = images.shape[0]
             total_loss += loss.detach().item() * batch_size
             for i, metric in enumerate(metric_fns):
-                total_metrics[i] += metric(prediction, RTs, meshes, obj_ids) * batch_size
+                total_metrics[i] += metric(prediction[list(prediction.keys())[-1]], RTs, meshes, obj_ids) * batch_size
 
-            pr_proj_pred = proj_visualize(prediction[0], M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
-            pr_proj_labe = proj_visualize(RTs, M[0]['grid_crop'], M[0]['coeffi_crop'], M[0]['ftr'], M[0]['ftr_mask'])
+
+            ##### visualize images
+            img = make_grid(P['roi_feature'].detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
+            img_vis = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
             
-            input_vis = make_grid(M[0]['roi_feature'].detach().cpu(), nrow=2, normalize=True).permute(1,2,0).numpy()
-            labe_vis = make_grid(pr_proj_labe.detach().cpu().mean(1, keepdim=True), nrow=2, normalize=True).permute(1,2,0).numpy()
-            pred_vis = make_grid(pr_proj_pred.detach().cpu().mean(1, keepdim=True), nrow=2, normalize=True).permute(1,2,0).numpy()
+            pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[end_level]['ftr_mask'], M[end_level]['ftr_mask'])
+            labe = make_grid(pr_proj_labe.detach().mean(1, keepdim=True).cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
+            labe_vis = ((labe - np.min(labe))/(np.max(labe) - np.min(labe)) * 255).astype(np.uint8)
+            # labe_vis = contour_visualize(labe, img)
+            
+            pr_proj_input = proj_visualize(prediction[start_level+1], P['grid_crop'], P['coeffi_crop'], M[end_level]['ftr_mask'], M[end_level]['ftr_mask'])
+            input = make_grid(pr_proj_input.detach().cpu().mean(1, True), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
+            input_vis = ((input - np.min(input))/(np.max(input) - np.min(input)) * 255).astype(np.uint8)
+            # input_vis = contour_visualize(input, img, (0, 0, 255))
 
-            pred = contour_visualize(pred_vis, input_vis)
-            labe = contour_visualize(labe_vis, input_vis)
+            result = np.concatenate((img_vis, labe_vis, input_vis), 1)
 
-            result = np.concatenate((labe, pred), 1)
+            for idx in list(prediction.keys())[1:]:
+                pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[end_level]['ftr_mask'], M[idx]['ftr_mask'])    
+                pred = make_grid(pr_proj_pred.detach().cpu().mean(1, keepdim=True), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
+                pred_vis = ((pred - np.min(pred))/(np.max(pred) - np.min(pred)) * 255).astype(np.uint8)
+                # pred_vis = contour_visualize(pred, img, (0, 0, 255))
+
+                result = np.concatenate((result, pred_vis), 1)
 
             plt.imsave(f'{result_path}/result_{batch_idx}.png', result)
-
-
 
     n_samples = len(data_loader.sampler)
     log = {'loss': total_loss / n_samples}
@@ -110,9 +126,9 @@ def main(config):
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default='saved/models/ProjectivePose/1026_220541/config.json', type=str,
+    args.add_argument('-c', '--config', default='saved/models/sample_model_2/config.json', type=str,
                       help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default='saved/models/ProjectivePose/1026_220541/checkpoint-epoch300.pth', type=str,
+    args.add_argument('-r', '--resume', default='saved/models/sample_model_2/model_best.pth', type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')

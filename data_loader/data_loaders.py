@@ -21,6 +21,7 @@ class DataLoader(BaseDataLoader):
         self.data_dir = data_dir
         self.img_ratio = img_ratio
         self.drop_last = True
+        self.training = training
         
         if training:
             with open(os.path.join(data_dir, 'train_pbr.pickle'), 'rb') as f:
@@ -59,7 +60,10 @@ class DataLoader(BaseDataLoader):
             images.append(self.transform(np.array(Image.open(batch_sample['image']))))
             masks.append(self.transform(np.array(Image.open(target_sample['mask']))).to(torch.uint8))
             obj_ids.append(torch.tensor(batch_sample['obj_id']))
-            bboxes.append(torch.tensor(target_sample['bbox_obj']) * self.img_ratio)
+            if self.training:
+                bboxes.append(torch.tensor(target_sample['bbox_obj']) * self.img_ratio)
+            else:
+                bboxes.append(torch.tensor(target_sample['bbox_faster']) * self.img_ratio)      # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
             RT = torch.tensor(target_sample['RT'], dtype=torch.float)
             RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
             RTs.append(RT)

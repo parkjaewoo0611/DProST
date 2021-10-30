@@ -534,14 +534,14 @@ def image_mean_std_check(dataloader):
 
 
 def contour_visualize(render, img, color=(0, 255, 0)):
+    render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
     render = ((render - np.min(render))/(np.max(render) - np.min(render)) * 255).astype(np.uint8)
     img = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
-    rgb = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
-    gray = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
-    _, thr_image = cv2.threshold(gray, 250, 255, 0)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    _, thr_image = cv2.threshold(render, 10, 255, 0)
     contours, hierarchy = cv2.findContours(thr_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    result = cv2.drawContours(rgb, contours, -1, color, 1)
+    result = cv2.drawContours(img, contours, -1, color, 1)
     return result
 
 LM_idx2class = {
