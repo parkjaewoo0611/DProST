@@ -28,7 +28,7 @@ class DataLoader(BaseDataLoader):
             with open(os.path.join(data_dir, 'train.pickle'), 'rb') as f:
                 dataset = pickle.load(f)
             dataset_pbr.extend(dataset * (len(dataset_pbr)//len(dataset)))
-            self.dataset = dataset_pbr
+            self.dataset = dataset
         else:
             with open(os.path.join(data_dir, 'test.pickle'), 'rb') as f:
                 self.dataset = pickle.load(f)
