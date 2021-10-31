@@ -73,14 +73,13 @@ class Trainer(BaseTrainer):
             if batch_idx % self.vis_step == 0:
                 self.writer.add_image(f'image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
                 self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                # pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[list(prediction.keys())[-1]]['ftr'], M[list(prediction.keys())[-1]]['ftr_mask'])
+                pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+                self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
                 for idx in list(prediction.keys())[1:]:
-                    pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
-                    pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
+                    # pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
+                    pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
                     self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().mean(1, True).cpu(), nrow=2, normalize=True))
-                    self.writer.add_image(f'gt_{idx}', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
-                    self.writer.add_image(f'input_{idx}', make_grid(M[idx]['pr_proj'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
-
-
 
             if batch_idx == self.len_epoch:
                 break
@@ -124,12 +123,13 @@ class Trainer(BaseTrainer):
             if batch_idx % int(len(self.valid_data_loader) / 2) == 0:
                 self.writer.add_image(f'image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
                 self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                # pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[list(prediction.keys())[-1]]['ftr'], M[list(prediction.keys())[-1]]['ftr_mask'])
+                pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+                self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
                 for idx in list(prediction.keys())[1:]:
-                    pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
-                    pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
+                    # pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
+                    pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
                     self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().mean(1, True).cpu(), nrow=2, normalize=True))
-                    self.writer.add_image(f'gt_{idx}', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
-                    self.writer.add_image(f'input_{idx}', make_grid(M[idx]['pr_proj'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
 
 
         # add histogram of model parameters to the tensorboard

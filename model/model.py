@@ -19,9 +19,9 @@ from utils.util import (
 class LocalizationNetwork(nn.Module):
     def __init__(self):
         super().__init__()
-        backbone = models.resnet18(pretrained=False)
+        backbone = models.resnet18(pretrained=True)
         backbone = nn.Sequential(*(list(backbone.children())[:-2]))
-        backbone[0] = nn.Conv2d(3+256, 64, 3, 2, 2)
+        backbone[0] = nn.Conv2d(3+3, 64, 3, 2, 2)
         setattr(backbone, "n_features", 512)
         self.model = backbone
 
@@ -113,7 +113,7 @@ class ProjectivePose(BaseModel):
     def forward(self, images, front, top, right, bboxes, obj_ids, gt_RT):
         bsz = images.shape[0]
         K_batch = self.K.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
-        unit_cube_vertex = UNIT_CUBE_VERTEX.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
+        # unit_cube_vertex = UNIT_CUBE_VERTEX.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
         projstn_grid = self.projstn_grid.repeat(bsz, 1, 1, 1, 1).to(bboxes.device)
         coefficient = self.coefficient.repeat(bsz, 1, 1, 1, 1).to(bboxes.device)
         
@@ -124,14 +124,16 @@ class ProjectivePose(BaseModel):
         """
         # M = [
             {
-                'ftr': ftr, 
-                'ftr_mask': ftr_mask, 
+                # 'ftr': ftr, 
+                # 'ftr_mask': ftr_mask, 
                 'pr_proj': pr_proj,
                 'roi_feature': roi_feature,
                 'obj_dist': obj_dist,
             }, ...
         # ]
         P = {
+                'ftr': ftr, 
+                'ftr_mask': ftr_mask, 
                 'grid_crop': grid_crop, 
                 'coeffi_crop': coeffi_crop,
                 'K_crop': K_crop,
@@ -148,12 +150,12 @@ class ProjectivePose(BaseModel):
         f_img = ((front[:, :3, ...] * f_mask) / 255.0)
         t_img = ((top[:, :3, ...] * t_mask) / 255.0)
         r_img = ((right[:, :3, ...] * r_mask) / 255.0)
-        ftr_img = torch.cat((f_img, t_img, r_img))
-        ftr_feature = self.proj_backbone(ftr_img)
+        # ftr_img = torch.cat((f_img, t_img, r_img))
+        # ftr_feature = self.proj_backbone(ftr_img)
 
-        for level in range(self.start_level, self.end_level-1, -1):
-            M[level]['ftr'], M[level]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature[str(level)].clone(), bsz, 0), 1)
- 
+        # for level in range(self.start_level, self.end_level-1, -1):
+            # M[level]['ftr'], M[level]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature[str(level)].clone(), bsz, 0))
+        P['ftr'], P['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), (f_img, t_img, r_img))
 
         ####################### image feature module #####################################
         # img_feature = self.image_backbone(images)
@@ -192,8 +194,8 @@ class ProjectivePose(BaseModel):
         P['roi_feature'] = get_roi_feature(P['bboxes_crop'], images, (self.H, self.W), (self.render_size, self.render_size))
 
         for level in range(self.start_level, self.end_level-1, -1):
-            M[level]['ftr'], M[level]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature[str(level)].clone(), bsz, 0), 1)
-            pr_RT[level], M[level]['pr_proj'], M[level]['obj_dist'] = self.projective_pose(pr_RT[level+1], M[level]['ftr'], M[level]['ftr_mask'], P['roi_feature'], P['grid_crop'], P['coeffi_crop'], P['K_crop'])
+            # pr_RT[level], M[level]['pr_proj'], M[level]['obj_dist'] = self.projective_pose(pr_RT[level+1].detach(), M[level]['ftr'], M[level]['ftr_mask'], P['roi_feature'], P['grid_crop'], P['coeffi_crop'], P['K_crop'])
+            pr_RT[level], M[level]['pr_proj'], M[level]['obj_dist'] = self.projective_pose(pr_RT[level+1].detach(), P['ftr'], P['ftr_mask'], P['roi_feature'], P['grid_crop'], P['coeffi_crop'], P['K_crop'])
 
         return M, pr_RT, P
 
@@ -230,18 +232,23 @@ class ProjectivePose(BaseModel):
         TCO_updated = apply_imagespace_predictions(TCO, K_crop, vxvyvz, dR)
         return TCO_updated
 
-    def orthographic_pool(self, mask, feature, level=0):
+    def orthographic_pool(self, mask, feature):
         f_mask, t_mask, r_mask = mask
         f_feature, t_feature, r_feature = feature
+        bsz = f_feature.shape[0]
+
+        grid_f = self.grid_f.clone().repeat(bsz, 1, 1, 1, 1)
+        grid_t = self.grid_t.clone().repeat(bsz, 1, 1, 1, 1)
+        grid_r = self.grid_r.clone().repeat(bsz, 1, 1, 1, 1)
 
         ## 3d mask
-        f_mask_3d = F.interpolate(f_mask, (self.render_size, self.render_size)).unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)  
-        t_mask_3d = F.interpolate(t_mask, (self.render_size, self.render_size)).unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)  
-        r_mask_3d = F.interpolate(r_mask, (self.render_size, self.render_size)).unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)  
+        f_mask_3d = F.interpolate(f_mask, (self.render_size, self.render_size))  
+        t_mask_3d = F.interpolate(t_mask, (self.render_size, self.render_size))  
+        r_mask_3d = F.interpolate(r_mask, (self.render_size, self.render_size))  
 
-        grid_f = self.grid_f.clone().repeat(f_mask_3d.shape[0], 1, 1, 1, 1)
-        grid_t = self.grid_t.clone().repeat(t_mask_3d.shape[0], 1, 1, 1, 1)
-        grid_r = self.grid_r.clone().repeat(r_mask_3d.shape[0], 1, 1, 1, 1)
+        f_mask_3d = f_mask_3d.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)                
+        t_mask_3d = t_mask_3d.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)
+        r_mask_3d = r_mask_3d.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)
 
         f_mask_3d = F.grid_sample(f_mask_3d, grid_f, mode='nearest')
         t_mask_3d = F.grid_sample(t_mask_3d, grid_t, mode='nearest')
@@ -249,9 +256,13 @@ class ProjectivePose(BaseModel):
         ftr_mask_3d = f_mask_3d * t_mask_3d * r_mask_3d
 
         ## 3d image
-        f_3d = f_feature.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)                
-        t_3d = t_feature.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)
-        r_3d = r_feature.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)
+        f_3d = F.interpolate(f_feature, (self.render_size, self.render_size))  
+        t_3d = F.interpolate(t_feature, (self.render_size, self.render_size))  
+        r_3d = F.interpolate(r_feature, (self.render_size, self.render_size))  
+
+        f_3d = f_3d.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)                
+        t_3d = t_3d.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)
+        r_3d = r_3d.unsqueeze(2).repeat(1, 1, self.render_size, 1, 1)
 
         f_3d = F.grid_sample(f_3d, grid_f)
         t_3d = F.grid_sample(t_3d, grid_t)
