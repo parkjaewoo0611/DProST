@@ -1,6 +1,6 @@
 {
     "name": "ProjectivePose",
-    "gpu_id": "0",
+    "gpu_id": "1",
     "arch": {
         "type": "ProjectivePose",
         "args": {
@@ -14,8 +14,8 @@
         "type": "DataLoader",
         "args":{
             "data_dir": "../Dataset/LINEMOD",
-            "batch_size": 6,
-            "obj_list" : [5],
+            "batch_size": 8,
+            "obj_list" : [10],
             "img_ratio" : 0.5,
             "shuffle": true,
             "validation_split": 0.1,
@@ -26,7 +26,7 @@
         "type": "MeshesLoader",
         "args":{
             "mesh_dir": "../Dataset/LINEMOD/models",
-            "obj_list" : [5],
+            "obj_list" : [10],
             "render_size" : 256
         }
     },

@@ -84,8 +84,8 @@ class ProjectivePose(BaseModel):
         #     3: self.render_size//32
         #     }
 
-        self.proj_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
-        self.image_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
+        # self.proj_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
+        # self.image_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
         self.local_network = LocalizationNetwork()
 
         ### for Orthographic Pooling ###
@@ -201,7 +201,7 @@ class ProjectivePose(BaseModel):
 
         # for level in range(self.start_level, self.end_level-1, -1):
             # M[level]['ftr'], M[level]['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), torch.split(ftr_feature[str(level)].clone(), bsz, 0))
-        P['ftr'], P['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), (f_img, t_img, r_img))
+        # P['ftr'], P['ftr_mask'] = self.orthographic_pool((f_mask, t_mask, r_mask), (f_img, t_img, r_img))
         P['ftr'], P['ftr_mask'] = self.projective_pool(P['roi_mask'], P['roi_feature'], gt_RT, P['K_crop'])
 
 
