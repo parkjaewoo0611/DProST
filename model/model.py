@@ -185,7 +185,7 @@ class ProjectivePose(BaseModel):
 
         ######################## initial pose estimate ##############################
         if self.training:
-            bboxes = bbox_add_noise(bboxes, std_rate=0.2)
+            bboxes = bbox_add_noise(bboxes, std_rate=0.1)
         pr_RT[self.start_level+1] = RT_from_boxes(bboxes, K_batch).detach()  
         
         # RT[4] = gt_RT
