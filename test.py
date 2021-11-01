@@ -18,12 +18,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def main(config):
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
+    # prepare model for testing
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     logger = config.get_logger('test')
 
     # setup data_loader instances
     data_loader = getattr(module_data, config['data_loader']['type'])(
         config['data_loader']['args']['data_dir'],
-        batch_size=1,
+        batch_size=4,
         obj_list=config['data_loader']['args']['obj_list'],
         img_ratio=config['data_loader']['args']['img_ratio'],
         shuffle=False,
@@ -45,9 +50,6 @@ def main(config):
     checkpoint = torch.load(config.resume)
     state_dict = checkpoint['state_dict']
 
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
-
     model.load_state_dict(state_dict)
 
     # test result visualized folder
@@ -58,10 +60,9 @@ def main(config):
         shutil.rmtree(result_path)
     os.makedirs(result_path, exist_ok=True)
 
-    # prepare model for testing
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     model.eval()
+    model.training = False
 
     total_loss = 0.0
     total_metrics = torch.zeros(len(metric_fns))
@@ -69,13 +70,16 @@ def main(config):
     start_level = config["arch"]["args"]["start_level"]
     end_level = config["arch"]["args"]["end_level"]
 
+    ftr, ftr_mask = model.build_ref(data_loader.references)
+    ftr, ftr_mask = ftr.to(device), ftr_mask.to(device)
+
     with torch.no_grad():
         for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(tqdm(data_loader)):
             images, masks, bboxes, RTs = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device)
             front, top, right = mesh_loader.batch_render(obj_ids)
             meshes = mesh_loader.batch_meshes(obj_ids)
 
-            M, prediction, P = model(images, front, top, right, bboxes, obj_ids, RTs)
+            M, prediction, P = model(images, ftr, ftr_mask, front, top, right, bboxes, obj_ids, RTs)
 
             # computing loss, metrics on test set          
             loss = 0
@@ -94,25 +98,25 @@ def main(config):
             img = make_grid(P['roi_feature'].detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             img_vis = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
             
-            pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[end_level]['ftr_mask'], M[end_level]['ftr_mask'])
-            labe = make_grid(pr_proj_labe.detach().mean(1, keepdim=True).cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
+            pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], ftr.repeat(batch_size, 1, 1, 1, 1), ftr_mask.repeat(batch_size, 1, 1, 1, 1))
+            labe = make_grid(pr_proj_labe.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             labe_vis = ((labe - np.min(labe))/(np.max(labe) - np.min(labe)) * 255).astype(np.uint8)
             # labe_vis = contour_visualize(labe, img)
             
-            pr_proj_input = proj_visualize(prediction[start_level+1], P['grid_crop'], P['coeffi_crop'], M[end_level]['ftr_mask'], M[end_level]['ftr_mask'])
-            input = make_grid(pr_proj_input.detach().cpu().mean(1, True), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
+            pr_proj_input = proj_visualize(prediction[start_level+1], P['grid_crop'], P['coeffi_crop'], ftr.repeat(batch_size, 1, 1, 1, 1), ftr_mask.repeat(batch_size, 1, 1, 1, 1))
+            input = make_grid(pr_proj_input.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             input_vis = ((input - np.min(input))/(np.max(input) - np.min(input)) * 255).astype(np.uint8)
             # input_vis = contour_visualize(input, img, (0, 0, 255))
 
-            result = np.concatenate((img_vis, labe_vis, input_vis), 1)
+            result = np.concatenate((img_vis, labe_vis, input_vis), 0)
 
             for idx in list(prediction.keys())[1:]:
-                pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[end_level]['ftr_mask'], M[idx]['ftr_mask'])    
-                pred = make_grid(pr_proj_pred.detach().cpu().mean(1, keepdim=True), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
+                pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], ftr.repeat(batch_size, 1, 1, 1, 1), ftr_mask.repeat(batch_size, 1, 1, 1, 1))    
+                pred = make_grid(pr_proj_pred.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
                 pred_vis = ((pred - np.min(pred))/(np.max(pred) - np.min(pred)) * 255).astype(np.uint8)
                 # pred_vis = contour_visualize(pred, img, (0, 0, 255))
 
-                result = np.concatenate((result, pred_vis), 1)
+                result = np.concatenate((result, pred_vis), 0)
 
             plt.imsave(f'{result_path}/result_{batch_idx}.png', result)
 
@@ -126,9 +130,9 @@ def main(config):
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default='saved/models/sample_model_2/config.json', type=str,
+    args.add_argument('-c', '--config', default='saved/models/sample_model_3/config.json', type=str,
                       help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default='saved/models/sample_model_2/model_best.pth', type=str,
+    args.add_argument('-r', '--resume', default='saved/models/sample_model_3/checkpoint-epoch200.pth', type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')

@@ -55,7 +55,7 @@ class DataLoader(BaseDataLoader):
                 references = random.sample(dataset, self.reference_N)
         
         self.references = {}
-        self.references['images'], self.references['masks'], self.references['obj_ids'], self.references['bboxes'], self.references['RTs'] = self.collate_fn(references)
+        self.references['images'], self.references['masks'], self.references['obj_ids'], self.references['bboxes'], self.references['RTs'] = self.collate_fn(references, True)
 
         #### self.dataset --> (batch, target) tuple
         super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=self.collate_fn)
@@ -78,7 +78,7 @@ class DataLoader(BaseDataLoader):
         return references
 
 
-    def collate_fn(self, data):
+    def collate_fn(self, data, reference=False):
         """
             data : a list of tuples with (batch, target)
             batch['image'] :  path to image
@@ -98,7 +98,7 @@ class DataLoader(BaseDataLoader):
             images.append(self.transform(np.array(Image.open(batch_sample['image']))))
             masks.append(self.transform(np.array(Image.open(target_sample['mask']))))
             obj_ids.append(torch.tensor(batch_sample['obj_id']))
-            if self.training:
+            if self.training or reference:
                 bboxes.append(torch.tensor(target_sample['bbox_obj']) * self.img_ratio)
             else:
                 bboxes.append(torch.tensor(target_sample['bbox_faster']) * self.img_ratio)      # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
