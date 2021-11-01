@@ -83,10 +83,6 @@ class MeshesLoader():
 
 
     def render_default(self, size):
-        # R_f = torch.tensor(np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])).float().unsqueeze(0).to(self.device)
-        # R_t = torch.tensor(np.array([[1, 0, 0], [0, 0,-1], [0, 1, 0]])).float().unsqueeze(0).to(self.device)
-        # R_r = torch.tensor(np.array([[0, 0, 1], [0, 1, 0], [-1,0, 0]])).float().unsqueeze(0).to(self.device)
-
         ### for Orthographic Pooling ###
         R_f = euler_angles_to_matrix(torch.tensor([-np.pi/2, 0, 0]), 'XYZ').unsqueeze(0).to(self.device)
         R_t = torch.eye(3).unsqueeze(0).to(self.device)

@@ -50,7 +50,7 @@ class Trainer(BaseTrainer):
             meshes = self.mesh_loader.batch_meshes(obj_ids)
 
             self.optimizer.zero_grad()
-            M, prediction, P = self.model(images, front, top, right, bboxes, obj_ids, RTs)
+            M, prediction, P = self.model(images, masks, front, top, right, bboxes, obj_ids, RTs)
             loss = 0
             for idx in list(prediction.keys())[1:]:
                 loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
@@ -109,7 +109,7 @@ class Trainer(BaseTrainer):
                 front, top, right = self.mesh_loader.batch_render(obj_ids)
                 meshes = self.mesh_loader.batch_meshes(obj_ids)
 
-                M, prediction, P = self.model(images, front, top, right, bboxes, obj_ids, RTs)
+                M, prediction, P = self.model(images, masks, front, top, right, bboxes, obj_ids, RTs)
                 loss = 0
                 for idx in list(prediction.keys())[1:]:
                     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)

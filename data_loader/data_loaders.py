@@ -58,7 +58,7 @@ class DataLoader(BaseDataLoader):
         RTs = []
         for idx, (batch_sample, target_sample) in enumerate(data):
             images.append(self.transform(np.array(Image.open(batch_sample['image']))))
-            masks.append(self.transform(np.array(Image.open(target_sample['mask']))).to(torch.uint8))
+            masks.append(self.transform(np.array(Image.open(target_sample['mask']))))
             obj_ids.append(torch.tensor(batch_sample['obj_id']))
             if self.training:
                 bboxes.append(torch.tensor(target_sample['bbox_obj']) * self.img_ratio)
