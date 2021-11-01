@@ -30,7 +30,6 @@ class Trainer(BaseTrainer):
         self.vis_step = 500 #int(len(data_loader) / 100)
         # self.mean, self.std = image_mean_std_check(self.data_loader)
 
-
         self.train_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
         self.valid_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
 
@@ -42,7 +41,10 @@ class Trainer(BaseTrainer):
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
+        self.model.training = True
         self.train_metrics.reset()
+        ftr, ftr_mask = self.model.build_ref(self.data_loader.references)
+        ftr, ftr_mask = ftr.to(self.device), ftr_mask.to(self.device)
 
         for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
             images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
@@ -50,7 +52,7 @@ class Trainer(BaseTrainer):
             meshes = self.mesh_loader.batch_meshes(obj_ids)
 
             self.optimizer.zero_grad()
-            M, prediction, P = self.model(images, masks, front, top, right, bboxes, obj_ids, RTs)
+            M, prediction, P = self.model(images, ftr, ftr_mask, front, top, right, bboxes, obj_ids, RTs)
             loss = 0
             for idx in list(prediction.keys())[1:]:
                 loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
@@ -72,14 +74,14 @@ class Trainer(BaseTrainer):
 
             if batch_idx % self.vis_step == 0:
                 self.writer.add_image(f'image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
-                self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().cpu(), nrow=2, normalize=True))
                 # pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[list(prediction.keys())[-1]]['ftr'], M[list(prediction.keys())[-1]]['ftr_mask'])
                 pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-                self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().cpu(), nrow=2, normalize=True))
                 for idx in list(prediction.keys())[1:]:
                     # pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
                     pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-                    self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                    self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().cpu(), nrow=2, normalize=True))
 
             if batch_idx == self.len_epoch:
                 break
@@ -101,15 +103,17 @@ class Trainer(BaseTrainer):
         :return: A log that contains information about validation
         """
         self.model.eval()
+        self.model.training = False
         self.valid_metrics.reset()
         with torch.no_grad():
-
+            ftr, ftr_mask = self.model.build_ref(self.data_loader.references)
+            ftr, ftr_mask = ftr.to(self.device), ftr_mask.to(self.device)
             for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.valid_data_loader):
                 images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
                 front, top, right = self.mesh_loader.batch_render(obj_ids)
                 meshes = self.mesh_loader.batch_meshes(obj_ids)
 
-                M, prediction, P = self.model(images, masks, front, top, right, bboxes, obj_ids, RTs)
+                M, prediction, P = self.model(images, ftr, ftr_mask, front, top, right, bboxes, obj_ids, RTs)
                 loss = 0
                 for idx in list(prediction.keys())[1:]:
                     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
@@ -122,14 +126,14 @@ class Trainer(BaseTrainer):
 
             if batch_idx % int(len(self.valid_data_loader) / 2) == 0:
                 self.writer.add_image(f'image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
-                self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().cpu(), nrow=2, normalize=True))
                 # pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[list(prediction.keys())[-1]]['ftr'], M[list(prediction.keys())[-1]]['ftr_mask'])
                 pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-                self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().cpu(), nrow=2, normalize=True))
                 for idx in list(prediction.keys())[1:]:
                     # pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
                     pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-                    self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().mean(1, True).cpu(), nrow=2, normalize=True))
+                    self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().cpu(), nrow=2, normalize=True))
 
 
         # add histogram of model parameters to the tensorboard

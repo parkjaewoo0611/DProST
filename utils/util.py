@@ -146,6 +146,7 @@ def TCO_to_vxvyvz(TCO_in, TCO_gt, K):
     return vxvyvz
 
 def bbox_add_noise(bbox, std_rate=0.2):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
     """
     bbox : batch_size x 4
     noisy_bbox : batch_size x 4
@@ -157,6 +158,7 @@ def bbox_add_noise(bbox, std_rate=0.2):
     return noisy_bbox
 
 def add_noise(TCO, euler_deg_std=[15, 15, 15], trans_std=[0.01, 0.01, 0.05]):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
     TCO_out = TCO.clone()
     device = TCO_out.device
     bsz = TCO.shape[0]
