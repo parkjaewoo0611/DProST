@@ -43,16 +43,22 @@ class Trainer(BaseTrainer):
         self.model.train()
         self.model.training = True
         self.train_metrics.reset()
-        ftr, ftr_mask = self.model.build_ref(self.data_loader.references)
-        ftr, ftr_mask = ftr.to(self.device), ftr_mask.to(self.device)
+
+        ftr = {}
+        ftr_mask = {}
+        for obj_id, references in self.data_loader.references.items():
+            ftr[obj_id], ftr_mask[obj_id] = self.model.build_ref(references)
+            ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(self.device), ftr_mask[obj_id].to(self.device)
 
         for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
             images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
             front, top, right = self.mesh_loader.batch_render(obj_ids)
             meshes = self.mesh_loader.batch_meshes(obj_ids)
+            ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
+            ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
             self.optimizer.zero_grad()
-            M, prediction, P = self.model(images, ftr, ftr_mask, front, top, right, bboxes, obj_ids, RTs)
+            M, prediction, P = self.model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
             loss = 0
             for idx in list(prediction.keys())[1:]:
                 loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
@@ -106,14 +112,19 @@ class Trainer(BaseTrainer):
         self.model.training = False
         self.valid_metrics.reset()
         with torch.no_grad():
-            ftr, ftr_mask = self.model.build_ref(self.data_loader.references)
-            ftr, ftr_mask = ftr.to(self.device), ftr_mask.to(self.device)
+            ftr = {}
+            ftr_mask = {}
+            for obj_id, references in self.data_loader.references.items():
+                ftr[obj_id], ftr_mask[obj_id] = self.model.build_ref(references)
+                ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(self.device), ftr_mask[obj_id].to(self.device)
             for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.valid_data_loader):
                 images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
                 front, top, right = self.mesh_loader.batch_render(obj_ids)
                 meshes = self.mesh_loader.batch_meshes(obj_ids)
+                ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
+                ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
-                M, prediction, P = self.model(images, ftr, ftr_mask, front, top, right, bboxes, obj_ids, RTs)
+                M, prediction, P = self.model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
                 loss = 0
                 for idx in list(prediction.keys())[1:]:
                     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)

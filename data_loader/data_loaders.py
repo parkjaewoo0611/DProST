@@ -40,22 +40,24 @@ class DataLoader(BaseDataLoader):
         # self.dataset = self.dataset[0:4]
 
         ##### for reference
-        if training:
-            if FPS:
-                references = self.farthest_rotation_sampling(self.dataset, self.reference_N)
-            else:
-                references = random.sample(self.dataset, self.reference_N)
-        else:
-            with open(os.path.join(data_dir, 'train.pickle'), 'rb') as f:
-                dataset = pickle.load(f)
-            dataset = [(batch, target) for i, (batch, target) in enumerate(dataset) if batch['obj_id'] in obj_list]
-            if FPS:
-                references = self.farthest_rotation_sampling(dataset, self.reference_N)
-            else:
-                references = random.sample(dataset, self.reference_N)
-        
+
+        with open(os.path.join(data_dir, 'train.pickle'), 'rb') as f:
+            dataset = pickle.load(f)
+        references = {}
         self.references = {}
-        self.references['images'], self.references['masks'], self.references['obj_ids'], self.references['bboxes'], self.references['RTs'] = self.collate_fn(references, True)
+        for obj_id in obj_list:
+            obj_dataset = [(batch, target) for i, (batch, target) in enumerate(dataset) if batch['obj_id'] is obj_id]
+            if FPS:
+                references[obj_id] = self.farthest_rotation_sampling(obj_dataset, self.reference_N)
+            else:
+                references[obj_id] = random.sample(obj_dataset, self.reference_N)
+            images, masks, _, bboxes, RTs = self.collate_fn(references[obj_id], True)
+            self.references[obj_id] = {
+                'images': images,
+                'masks': masks,
+                'bboxes': bboxes,
+                'RTs': RTs
+            }
 
         #### self.dataset --> (batch, target) tuple
         super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=self.collate_fn)

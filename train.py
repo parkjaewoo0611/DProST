@@ -72,7 +72,10 @@ if __name__ == '__main__':
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default=None, type=str,
                       help='indices of GPUs to enable (default: all)')
-
+    args.add_argument('-s', '--start_level', default=None, type=int,
+                      help='start level')
+    args.add_argument('-e', '--end_level', default=None, type=int,
+                      help='end level')
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [

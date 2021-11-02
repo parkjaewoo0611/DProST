@@ -57,8 +57,6 @@ class ConfigParser:
         if not isinstance(args, tuple):
             args = args.parse_args()
 
-        if args.device is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = args.device
         if args.resume is not None:
             resume = Path(args.resume)
             cfg_fname = resume.parent / 'config.json'
@@ -75,6 +73,12 @@ class ConfigParser:
 
         # parse custom cli options into dictionary
         modification = {opt.target : getattr(args, _get_opt_name(opt.flags)) for opt in options}
+        if args.device is not None:
+            config["gpu_id"] = args.device
+        if args.start_level is not None:
+            config["arch"]["args"]["start_level"] = args.start_level
+        if args.end_level is not None:
+            config["arch"]["args"]["end_level"] = args.end_level
         return cls(config, resume, modification)
 
     def init_obj(self, name, module, *args, **kwargs):

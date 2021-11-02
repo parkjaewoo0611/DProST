@@ -142,8 +142,8 @@ class ProjectivePose(BaseModel):
         ####################### 3D feature module ########################################
         M = [{}, {}, {}, {}]
         P = {
-            'ftr': ftr.repeat(bsz, 1, 1, 1, 1), 
-            'ftr_mask': ftr_mask.repeat(bsz, 1, 1, 1, 1)
+            'ftr': ftr, 
+            'ftr_mask': ftr_mask
         }
         pr_RT = {}
         """
