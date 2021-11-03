@@ -34,7 +34,8 @@ def main(config):
         shuffle=False,
         validation_split=0.0,
         training=False,
-        num_workers=2
+        num_workers=2,
+        FPS=config['data_loader']['args']['FPS']
     )
     mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
