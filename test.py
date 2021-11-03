@@ -53,12 +53,7 @@ def main(config):
     model.load_state_dict(state_dict)
 
     # test result visualized folder
-    result_path = os.fspath(config.resume).split('/')
-    result_path[-4] = 'results'
-    result_path = os.path.join(*result_path[:-1])
-    if os.path.isdir(result_path):
-        shutil.rmtree(result_path)
-    os.makedirs(result_path, exist_ok=True)
+    result_path = config["result_path"]
 
     model = model.to(device)
     model.eval()
@@ -141,6 +136,8 @@ if __name__ == '__main__':
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')
+    args.add_argument('--result_path', default=None, type=str,
+                      help='result saved path')
     args.add_argument('-s', '--start_level', default=None, type=int,
                       help='start level')
     args.add_argument('-e', '--end_level', default=None, type=int,

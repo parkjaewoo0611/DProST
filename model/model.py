@@ -228,6 +228,7 @@ class ProjectivePose(BaseModel):
 
 
         for level in range(self.start_level, self.end_level-1, -1):
+        # for level in range(1, 0, -1):
             # pr_RT[level], M[level]['pr_proj'], M[level]['obj_dist'] = self.projective_pose(pr_RT[level+1].detach(), M[level]['ftr'], M[level]['ftr_mask'], P['roi_feature'], P['grid_crop'], P['coeffi_crop'], P['K_crop'])
             pr_RT[level], M[level]['pr_proj'], M[level]['obj_dist'] = self.projective_pose(self.local_network[str(level)], pr_RT[level+1].detach(), P['ftr'], P['ftr_mask'], P['roi_feature'], P['grid_crop'], P['coeffi_crop'], P['K_crop'])
 

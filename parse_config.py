@@ -79,6 +79,8 @@ class ConfigParser:
             config["arch"]["args"]["start_level"] = args.start_level
         if args.end_level is not None:
             config["arch"]["args"]["end_level"] = args.end_level
+        if args.result_path is not None:
+            config["result_path"] = args.result_path
         return cls(config, resume, modification)
 
     def init_obj(self, name, module, *args, **kwargs):
