@@ -28,16 +28,16 @@ def ADD_score(prediction, RTs, meshes, ids):
     ADD10 = []
 
     for i, id in enumerate(ids):
+        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
+        pred_RT = TCO_output[i:i+1]
+        labe_RT = TCO_label[i:i+1]
+        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
+        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
         if LM_idx2symmetry[id] == 'none':
-            out_d = ADD(
-                TCO_output[i:i+1], 
-                TCO_label[i:i+1],
-                points[i].unsqueeze(0) * LM_idx2radius[id])
+            out_d = ADD(pred_RT, labe_RT, pts)
         else:
-            out_d = ADD_S(
-                TCO_output[i:i+1], 
-                TCO_label[i:i+1],
-                points[i].unsqueeze(0) * LM_idx2radius[id])
+            out_d = ADD_S(pred_RT, labe_RT, pts)
+
         ADD10.append((out_d.detach().cpu().numpy() - LM_idx2diameter[id]/10)<0)
 
     return sum(ADD10)/len(ADD10)
@@ -53,7 +53,7 @@ def ADD(output, target, points):
     labe_pts = labe_pts.permute(0, 2, 1)
     pred_out_pts = pred_out_pts.permute(0, 2, 1)
 
-    out_lossvalue = torch.norm(pred_out_pts - labe_pts, p=1, dim=2).mean(1)
+    out_lossvalue = torch.norm(pred_out_pts - labe_pts, p=2, dim=2).mean(1)
 
     return out_lossvalue
 

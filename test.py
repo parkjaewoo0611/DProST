@@ -16,6 +16,8 @@ from parse_config import ConfigParser
 from utils import proj_visualize, contour_visualize
 import matplotlib.pyplot as plt
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore") 
 
 def main(config):
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
@@ -35,7 +37,7 @@ def main(config):
         validation_split=0.0,
         training=False,
         num_workers=2,
-        FPS=config['data_loader']['args']['FPS']
+        FPS=True#config['data_loader']['args']['FPS']
     )
     mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
@@ -131,13 +133,13 @@ def main(config):
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default='saved/models/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-1000epoch/11/config.json', type=str,
+    args.add_argument('-c', '--config', default='saved/models/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-2000epoch/1/config.json', type=str,
                       help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default='saved/models/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-1000epoch/11/checkpoint-epoch1000.pth', type=str,
+    args.add_argument('-r', '--resume', default='saved/models/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-2000epoch/1/checkpoint-epoch2000.pth', type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')
-    args.add_argument('--result_path', default=None, type=str,
+    args.add_argument('--result_path', default='saved/results/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-2000epoch/1', type=str,
                       help='result saved path')
     args.add_argument('-s', '--start_level', default=None, type=int,
                       help='start level')

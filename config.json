@@ -15,7 +15,7 @@
         "args":{
             "data_dir": "../Dataset/LINEMOD",
             "batch_size": 8,
-            "obj_list" : [15],
+            "obj_list" : [10],
             "reference_N": 8,
             "img_ratio" : 0.5,
             "shuffle": true,
@@ -28,7 +28,7 @@
         "type": "MeshesLoader",
         "args":{
             "mesh_dir": "../Dataset/LINEMOD/models",
-            "obj_list" : [1],
+            "obj_list" : [10],
             "render_size" : 256
         }
     },
