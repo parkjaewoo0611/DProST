@@ -1,23 +1,26 @@
 {
     "name": "ProjectivePose",
-    "gpu_id": "1",
+    "gpu_id": "0",
     "arch": {
         "type": "ProjectivePose",
         "args": {
             "img_ratio": 0.5,
-            "render_size": 256,
+            "input_size": 128,
+            "ftr_size": 64,
             "start_level": 1,
             "end_level": 0,
-            "N_z": 50
+            "model_name": "res18",
+            "N_z": 100
         }
     },
     "data_loader": {
         "type": "DataLoader",
         "args":{
             "data_dir": "../Dataset/LINEMOD",
-            "batch_size": 8,
+            "batch_size": 4,
             "obj_list" : [1],
             "reference_N": 8,
+            "is_pbr": false,
             "img_ratio" : 0.5,
             "shuffle": true,
             "validation_split": 0.1,
@@ -30,7 +33,7 @@
         "args":{
             "mesh_dir": "../Dataset/LINEMOD/models",
             "obj_list" : [1],
-            "render_size" : 256
+            "render_size" : 128
         }
     },
     "optimizer": {
@@ -47,7 +50,7 @@
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
-            "step_size": 2000,
+            "step_size": 1500,
             "gamma": 0.1
         }
     },
@@ -55,7 +58,7 @@
         "epochs": 2000,
 
         "save_dir": "saved/",
-        "save_period": 100,
+        "save_period": 1,
         "verbosity": 2,
         
         "monitor": "min val_loss",

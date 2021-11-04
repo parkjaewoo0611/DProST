@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torchvision.utils import make_grid
+import torch.nn.functional as F
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker, image_mean_std_check, proj_visualize
 
@@ -46,7 +47,8 @@ class Trainer(BaseTrainer):
 
         ftr = {}
         ftr_mask = {}
-        for obj_id, references in self.data_loader.references.items():
+        obj_references = self.data_loader.select_reference()
+        for obj_id, references in obj_references.items():
             ftr[obj_id], ftr_mask[obj_id] = self.model.build_ref(references)
             ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(self.device), ftr_mask[obj_id].to(self.device)
 
@@ -58,12 +60,10 @@ class Trainer(BaseTrainer):
             ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
             self.optimizer.zero_grad()
-            M, prediction, P = self.model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
+            prediction, P = self.model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
             loss = 0
             for idx in list(prediction.keys())[1:]:
-                loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
-
-            # loss += self.criterion(prediction[4], prediction[0], RTs, **M[0], **P)
+                loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **P)
 
             loss.backward()
             self.optimizer.step()
@@ -81,12 +81,12 @@ class Trainer(BaseTrainer):
             if batch_idx % self.vis_step == 0:
                 self.writer.add_image(f'image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
                 self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().cpu(), nrow=2, normalize=True))
-                # pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[list(prediction.keys())[-1]]['ftr'], M[list(prediction.keys())[-1]]['ftr_mask'])
                 pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+                pr_proj_labe = F.interpolate(pr_proj_labe, (self.model.input_size, self.model.input_size), mode='bilinear', align_corners=True)
                 self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().cpu(), nrow=2, normalize=True))
                 for idx in list(prediction.keys())[1:]:
-                    # pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
                     pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+                    pr_proj_pred = F.interpolate(pr_proj_pred, (self.model.input_size, self.model.input_size), mode='bilinear', align_corners=True)
                     self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().cpu(), nrow=2, normalize=True))
 
             if batch_idx == self.len_epoch:
@@ -114,9 +114,11 @@ class Trainer(BaseTrainer):
         with torch.no_grad():
             ftr = {}
             ftr_mask = {}
-            for obj_id, references in self.data_loader.references.items():
+            obj_references = self.data_loader.select_reference()
+            for obj_id, references in obj_references.items():
                 ftr[obj_id], ftr_mask[obj_id] = self.model.build_ref(references)
                 ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(self.device), ftr_mask[obj_id].to(self.device)
+
             for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.valid_data_loader):
                 images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
                 front, top, right = self.mesh_loader.batch_render(obj_ids)
@@ -124,11 +126,10 @@ class Trainer(BaseTrainer):
                 ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
                 ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
-                M, prediction, P = self.model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
+                prediction, P = self.model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
                 loss = 0
                 for idx in list(prediction.keys())[1:]:
-                    loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
-                # loss += self.criterion(prediction[4], prediction[0], RTs, **M[0], **P)
+                    loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **P)
 
                 self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
                 self.valid_metrics.update('loss', loss.detach().item())
@@ -138,12 +139,12 @@ class Trainer(BaseTrainer):
             if batch_idx % int(len(self.valid_data_loader) / 2) == 0:
                 self.writer.add_image(f'image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
                 self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().cpu(), nrow=2, normalize=True))
-                # pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], M[list(prediction.keys())[-1]]['ftr'], M[list(prediction.keys())[-1]]['ftr_mask'])
                 pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+                pr_proj_labe = F.interpolate(pr_proj_labe, (self.model.input_size, self.model.input_size), mode='bilinear', align_corners=True)
                 self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().cpu(), nrow=2, normalize=True))
                 for idx in list(prediction.keys())[1:]:
-                    # pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], M[idx]['ftr'], M[idx]['ftr_mask'])
                     pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+                    pr_proj_pred = F.interpolate(pr_proj_pred, (self.model.input_size, self.model.input_size), mode='bilinear', align_corners=True)
                     self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().cpu(), nrow=2, normalize=True))
 
 

@@ -5,10 +5,9 @@ import torch
 import numpy as np
 import pickle
 from base import BaseDataLoader
-from utils.util import LM_idx2radius
+from utils.util import LM_idx2radius, farthest_rotation_sampling
 import random
 import torch.utils.data.dataset
-from pytorch3d.transforms import so3_relative_angle
 
 class DataLoader(BaseDataLoader):
     """
@@ -24,60 +23,47 @@ class DataLoader(BaseDataLoader):
         self.drop_last = True
         self.training = training
         self.reference_N = reference_N
-        
+        self.is_pbr = is_pbr
+        self.obj_list = obj_list
+        self.FPS = FPS
+
+        with open(os.path.join(self.data_dir, 'train.pickle'), 'rb') as f:
+            self.dataset_train = pickle.load(f)
+
         if training:
-            with open(os.path.join(data_dir, 'train.pickle'), 'rb') as f:
-                dataset = pickle.load(f)
-            if is_pbr:
+            self.dataset = self.dataset_train
+            if self.is_pbr:
                 with open(os.path.join(data_dir, 'train_pbr.pickle'), 'rb') as f:
-                    dataset_pbr = pickle.load(f)
-                dataset.extend(dataset * (len(dataset_pbr)//len(dataset)))
-            self.dataset = dataset
+                    self.dataset_pbr = pickle.load(f)
+                self.dataset_pbr = [(batch, target) for i, (batch, target) in enumerate(self.dataset_pbr) if batch['obj_id'] in self.obj_list]
         else:
             with open(os.path.join(data_dir, 'test.pickle'), 'rb') as f:
                 self.dataset = pickle.load(f)
 
-        self.dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset) if batch['obj_id'] in obj_list]
+        self.dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset) if batch['obj_id'] in self.obj_list]
         # self.dataset = self.dataset[0:4]
 
-        ##### for reference
-
-        with open(os.path.join(data_dir, 'train.pickle'), 'rb') as f:
-            dataset = pickle.load(f)
-        references = {}
-        self.references = {}
-        for obj_id in obj_list:
-            obj_dataset = [(batch, target) for i, (batch, target) in enumerate(dataset) if batch['obj_id'] is obj_id]
-            if FPS:
-                references[obj_id] = self.farthest_rotation_sampling(obj_dataset, self.reference_N)
-            else:
-                references[obj_id] = random.sample(obj_dataset, self.reference_N)
-            images, masks, _, bboxes, RTs = self.collate_fn(references[obj_id], True)
-            self.references[obj_id] = {
-                'images': images,
-                'masks': masks,
-                'bboxes': bboxes,
-                'RTs': RTs
-            }
 
         #### self.dataset --> (batch, target) tuple
         super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=self.collate_fn)
 
-    def farthest_rotation_sampling(self, dataset, N):
-        references = []
-        farthest_idx = np.zeros(N)
-        farthest_Rs = np.zeros([N, 3, 3])
-        Rs = torch.tensor(np.stack([target['RT'][:3, :3] for i, (batch, target) in enumerate(dataset)]))
-        farthest_idx[0] = np.random.randint(Rs.shape[0])
-        farthest_Rs[0] = Rs[int(farthest_idx[0])]
-        distances = so3_relative_angle(torch.tensor(farthest_Rs[0]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs)
-        for i in range(1, N):
-            farthest_idx[i] = torch.argmax(distances)
-            farthest_Rs[i] = Rs[int(farthest_idx[i])]
-            distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_Rs[i]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs))
 
-        for idx in list(farthest_idx.astype(int)):
-            references.append(dataset[idx])
+    def select_reference(self):
+        ##### for reference
+        references = {}
+        for obj_id in self.obj_list:
+            obj_dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset_train) if batch['obj_id'] is obj_id]
+            if self.FPS:
+                ref = farthest_rotation_sampling(obj_dataset, self.reference_N)
+            else:
+                ref = random.sample(obj_dataset, self.reference_N)
+            images, masks, _, bboxes, RTs = self.collate_fn(ref, True)
+        references[obj_id] = {
+            'images': images,
+            'masks': masks,
+            'bboxes': bboxes,
+            'RTs': RTs
+        }
         return references
 
 
@@ -108,6 +94,17 @@ class DataLoader(BaseDataLoader):
             RT = torch.tensor(target_sample['RT'], dtype=torch.float)
             RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
             RTs.append(RT)
+
+        if self.is_pbr and self.training:
+            data_pbr = random.sample(self.dataset_pbr, len(data))
+            for idx, (batch_sample, target_sample) in enumerate(data_pbr):
+                images.append(self.transform(np.array(Image.open(batch_sample['image']))))
+                masks.append(self.transform(np.array(Image.open(target_sample['mask']))))
+                obj_ids.append(torch.tensor(batch_sample['obj_id']))
+                bboxes.append(torch.tensor(target_sample['bbox_obj']) * self.img_ratio)
+                RT = torch.tensor(target_sample['RT'], dtype=torch.float)
+                RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
+                RTs.append(RT)
 
         images = torch.stack(images)
         masks = torch.stack(masks)

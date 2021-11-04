@@ -37,7 +37,6 @@ def ADD_score(prediction, RTs, meshes, ids):
             out_d = ADD(pred_RT, labe_RT, pts)
         else:
             out_d = ADD_S(pred_RT, labe_RT, pts)
-        print(f'1/10 diameter: {LM_idx2diameter[id]/10}, result: {out_d}')
         ADD10.append((out_d.detach().cpu().numpy() - LM_idx2diameter[id]/10)<0)
 
     return sum(ADD10)/len(ADD10)

@@ -78,7 +78,7 @@ import torchvision
 import numpy as np
 import matplotlib.pyplot as plt
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
-from pytorch3d.transforms import euler_angles_to_matrix
+from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle
 from torchvision.ops import roi_align
 import cv2
 
@@ -505,16 +505,22 @@ def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
     return roi_feature
 
 def proj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
-    ###### grid distance change
-    obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
-    grid_proj_origin =grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
-    ###### Projective Grid Generator
-    pr_grid_proj = grid_transformer(grid_proj_origin, RT)
+    ####### Dynamic Projective STN
+    pr_grid_proj, obj_dist = dynamic_projective_stn(RT, grid_crop, coeffi_crop)
     ####### sample ftr to 2D
     pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
     ###### z-buffering
     pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
     return pr_proj
+
+
+def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
+    ###### grid distance change
+    obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
+    grid_proj_origin =grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
+    ###### Projective Grid Generator
+    pr_grid_proj = grid_transformer(grid_proj_origin, RT)
+    return pr_grid_proj, obj_dist
 
 
 def image_mean_std_check(dataloader):
@@ -545,6 +551,97 @@ def contour_visualize(render, img, color=(0, 255, 0)):
     contours, hierarchy = cv2.findContours(thr_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     result = cv2.drawContours(img, contours, -1, color, 1)
     return result
+
+
+def farthest_rotation_sampling(dataset, N):
+    references = []
+    farthest_idx = np.zeros(N)
+    farthest_Rs = np.zeros([N, 3, 3])
+    Rs = torch.tensor(np.stack([target['RT'][:3, :3] for i, (batch, target) in enumerate(dataset)]))
+    farthest_idx[0] = np.random.randint(Rs.shape[0])
+    farthest_Rs[0] = Rs[int(farthest_idx[0])]
+    distances = so3_relative_angle(torch.tensor(farthest_Rs[0]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs)
+    for i in range(1, N):
+        farthest_idx[i] = torch.argmax(distances)
+        farthest_Rs[i] = Rs[int(farthest_idx[i])]
+        distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_Rs[i]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs))
+
+    for idx in list(farthest_idx.astype(int)):
+        references.append(dataset[idx])
+    return references
+
+def orthographic_pool(grids, mask, feature, ftr_size):
+    f_mask, t_mask, r_mask = mask
+    f_feature, t_feature, r_feature = feature
+    grid_f, grid_t, grid_r = grids
+    bsz = f_feature.shape[0]
+
+    grid_f = grid_f.clone().to(f_feature.device).repeat(bsz, 1, 1, 1, 1)
+    grid_t = grid_t.clone().to(t_feature.device).repeat(bsz, 1, 1, 1, 1)
+    grid_r = grid_r.clone().to(r_feature.device).repeat(bsz, 1, 1, 1, 1)
+
+    ## 3d mask
+    f_mask_3d = F.interpolate(f_mask, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+    t_mask_3d = F.interpolate(t_mask, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+    r_mask_3d = F.interpolate(r_mask, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+
+    f_mask_3d = f_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
+    t_mask_3d = t_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+    r_mask_3d = r_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+
+    f_mask_3d = F.grid_sample(f_mask_3d, grid_f, mode='bilinear', align_corners=True)
+    t_mask_3d = F.grid_sample(t_mask_3d, grid_t, mode='bilinear', align_corners=True)
+    r_mask_3d = F.grid_sample(r_mask_3d, grid_r, mode='bilinear', align_corners=True)
+    ftr_mask_3d = f_mask_3d * t_mask_3d * r_mask_3d
+
+    ## 3d image
+    f_3d = F.interpolate(f_feature, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+    t_3d = F.interpolate(t_feature, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+    r_3d = F.interpolate(r_feature, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+
+    f_3d = f_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
+    t_3d = t_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+    r_3d = r_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+
+    f_3d = F.grid_sample(f_3d, grid_f, mode='bilinear', align_corners=True)
+    t_3d = F.grid_sample(t_3d, grid_t, mode='bilinear', align_corners=True)
+    r_3d = F.grid_sample(r_3d, grid_r, mode='bilinear', align_corners=True)
+
+    ftr_3d = (f_3d + t_3d + r_3d) / 3   
+    ftr_3d = ftr_3d * ftr_mask_3d
+    return ftr_3d, ftr_mask_3d
+
+def projective_pool(grid_p, masks, features, RT, K_crop, ftr_size):
+    bsz = features.shape[0]
+
+    index_3d = torch.zeros([ftr_size, ftr_size, ftr_size, 3])
+    idx = torch.arange(0, ftr_size)
+    index_3d[..., 0], index_3d[..., 1], index_3d[..., 2] = torch.meshgrid(idx, idx, idx)
+    normalized_idx = (index_3d - ftr_size/2)/(ftr_size/2)
+    X = normalized_idx.reshape(1, -1, 3).repeat(bsz, 1, 1)
+
+    homogeneous_X = torch.cat((X, torch.ones(X.shape[0], X.shape[1], 1)), 2).transpose(1, 2).to(RT.device)
+    xyz_KRT = torch.bmm(K_crop, torch.bmm(RT[:, :3, :], homogeneous_X))
+    xyz = (xyz_KRT/xyz_KRT[:, [2], :]).transpose(1, 2).reshape(bsz, ftr_size, ftr_size, ftr_size, 3)
+    xyz[..., :2] = (xyz[..., :2] - ftr_size/2)/(ftr_size/2)
+    xyz[... ,2] = 0
+    
+    features_3d = features.unsqueeze(2)
+    masks_3d = masks.unsqueeze(2)
+
+    ftr_mask_3d = F.grid_sample(masks_3d, xyz, mode='bilinear', align_corners=True)
+    ftr_3d = F.grid_sample(features_3d, xyz, mode='bilinear', align_corners=True)
+
+    ftr_mask_3d = torch.prod(ftr_mask_3d, 0, keepdim=True)
+    ftr_3d = ftr_3d.sum(0, keepdim=True)
+
+    ftr_3d = ftr_3d * ftr_mask_3d
+
+    grid_p = grid_p.clone()
+    ftr_mask_3d = F.grid_sample(ftr_mask_3d, grid_p, mode='bilinear', align_corners=True)
+    ftr_3d = F.grid_sample(ftr_3d, grid_p, mode='bilinear', align_corners=True)
+            
+    return ftr_3d, ftr_mask_3d
 
 LM_idx2class = {
     1: "ape",

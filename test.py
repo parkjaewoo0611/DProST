@@ -5,6 +5,7 @@ sys.path.append('utils')
 sys.path.append('utils/bop_toolkit')
 import argparse
 import torch
+import torch.nn.functional as F
 from torchvision.utils import make_grid
 from tqdm import tqdm
 import data_loader.mesh_loader as module_mesh
@@ -73,7 +74,9 @@ def main(config):
 
     ftr = {}
     ftr_mask = {}
-    for obj_id, references in data_loader.references.items():
+
+    obj_references = data_loader.select_reference()
+    for obj_id, references in obj_references.items():
         ftr[obj_id], ftr_mask[obj_id] = model.build_ref(references)
         ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(device), ftr_mask[obj_id].to(device)
 
@@ -85,29 +88,30 @@ def main(config):
             ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
             ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
-            M, prediction, P = model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
+            prediction, P = model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
 
             # computing loss, metrics on test set          
             loss = 0
             for idx in list(prediction.keys())[1:]:
-                loss += loss_fn(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
+                loss += loss_fn(prediction[idx+1], prediction[idx], RTs, **P)
 
             batch_size = images.shape[0]
             total_loss += loss.detach().item() * batch_size
             for i, metric in enumerate(metric_fns):
                 total_metrics[i] += metric(prediction[list(prediction.keys())[-1]], RTs, meshes, obj_ids) * batch_size
 
-
             ##### visualize images
             img = make_grid(P['roi_feature'].detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             img_vis = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
             
             pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+            pr_proj_labe = F.interpolate(pr_proj_labe, (model.input_size, model.input_size), mode='bilinear', align_corners=True)
             labe = make_grid(pr_proj_labe.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             labe_vis = ((labe - np.min(labe))/(np.max(labe) - np.min(labe)) * 255).astype(np.uint8)
             labe_c  = contour_visualize(labe, img)
             
             pr_proj_input = proj_visualize(prediction[start_level+1], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+            pr_proj_input = F.interpolate(pr_proj_input, (model.input_size, model.input_size), mode='bilinear', align_corners=True)
             input = make_grid(pr_proj_input.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             input_vis = ((input - np.min(input))/(np.max(input) - np.min(input)) * 255).astype(np.uint8)
             input_c = contour_visualize(input, img, (0, 0, 255))
@@ -116,6 +120,7 @@ def main(config):
 
             for idx in list(prediction.keys())[1:]:
                 pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])    
+                pr_proj_pred = F.interpolate(pr_proj_pred, (model.input_size, model.input_size), mode='bilinear', align_corners=True)
                 pred = make_grid(pr_proj_pred.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
                 pred_vis = ((pred - np.min(pred))/(np.max(pred) - np.min(pred)) * 255).astype(np.uint8)
                 pred_c = contour_visualize(pred, img, (0, 0, 255))
@@ -134,13 +139,13 @@ def main(config):
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default='saved/models/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-2000epoch/1/config.json', type=str,
+    args.add_argument('-c', '--config', default='saved/models/ProjectivePose/1105_033104/config.json', type=str,
                       help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default='saved/models/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-2000epoch/1/checkpoint-epoch2000.pth', type=str,
+    args.add_argument('-r', '--resume', default='saved/models/ProjectivePose/1105_033104/checkpoint-epoch1.pth', type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')
-    args.add_argument('--result_path', default='saved/results/LINEMOD-Nmodel-2iter-8reference-farthest-256render-100Nz-res18-2000epoch/1', type=str,
+    args.add_argument('--result_path', default='saved/results/1105_033104', type=str,
                       help='result saved path')
     args.add_argument('-s', '--start_level', default=None, type=int,
                       help='start level')
