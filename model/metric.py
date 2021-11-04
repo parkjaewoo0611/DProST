@@ -20,9 +20,9 @@ def top_k_acc(output, target, k=3):
     return correct / len(target)
 
 def ADD_score(prediction, RTs, meshes, ids):
-    TCO_output = prediction.detach()
-    TCO_label = RTs.detach()
-    points = meshes.verts_list()
+    TCO_output = prediction.clone()
+    TCO_label = RTs.clone()
+    points = meshes.clone().verts_list()
     ids = ids.cpu().numpy()
 
     ADD10 = []
@@ -37,7 +37,7 @@ def ADD_score(prediction, RTs, meshes, ids):
             out_d = ADD(pred_RT, labe_RT, pts)
         else:
             out_d = ADD_S(pred_RT, labe_RT, pts)
-
+        print(f'1/10 diameter: {LM_idx2diameter[id]/10}, result: {out_d}')
         ADD10.append((out_d.detach().cpu().numpy() - LM_idx2diameter[id]/10)<0)
 
     return sum(ADD10)/len(ADD10)

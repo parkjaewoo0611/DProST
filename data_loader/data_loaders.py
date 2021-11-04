@@ -15,7 +15,7 @@ class DataLoader(BaseDataLoader):
     DataLoader for pickle data which has location of images to load 
     and etc labels
     """
-    def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=False, img_ratio=1.0, shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True):
+    def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=True, img_ratio=1.0, shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True):
         H = int(480 * img_ratio)
         W = int(640 * img_ratio)
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(size=(H, W))])
@@ -26,11 +26,12 @@ class DataLoader(BaseDataLoader):
         self.reference_N = reference_N
         
         if training:
-            with open(os.path.join(data_dir, 'train_pbr.pickle'), 'rb') as f:
-                dataset_pbr = pickle.load(f)
             with open(os.path.join(data_dir, 'train.pickle'), 'rb') as f:
                 dataset = pickle.load(f)
-            dataset_pbr.extend(dataset * (len(dataset_pbr)//len(dataset)))
+            if is_pbr:
+                with open(os.path.join(data_dir, 'train_pbr.pickle'), 'rb') as f:
+                    dataset_pbr = pickle.load(f)
+                dataset.extend(dataset * (len(dataset_pbr)//len(dataset)))
             self.dataset = dataset
         else:
             with open(os.path.join(data_dir, 'test.pickle'), 'rb') as f:

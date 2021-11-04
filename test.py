@@ -30,7 +30,7 @@ def main(config):
     # setup data_loader instances
     data_loader = getattr(module_data, config['data_loader']['type'])(
         config['data_loader']['args']['data_dir'],
-        batch_size=4,
+        batch_size=8,
         obj_list=config['data_loader']['args']['obj_list'],
         img_ratio=config['data_loader']['args']['img_ratio'],
         shuffle=False,
@@ -57,6 +57,9 @@ def main(config):
 
     # test result visualized folder
     result_path = config["result_path"]
+    if os.path.isdir(result_path):
+        shutil.rmtree(result_path)
+    os.makedirs(result_path, exist_ok=True)
 
     model = model.to(device)
     model.eval()
@@ -89,8 +92,6 @@ def main(config):
             for idx in list(prediction.keys())[1:]:
                 loss += loss_fn(prediction[idx+1], prediction[idx], RTs, **M[idx], **P)
 
-            # loss += loss_fn(prediction[4], prediction[0], RTs, **M[0])
-
             batch_size = images.shape[0]
             total_loss += loss.detach().item() * batch_size
             for i, metric in enumerate(metric_fns):
@@ -104,22 +105,22 @@ def main(config):
             pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
             labe = make_grid(pr_proj_labe.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             labe_vis = ((labe - np.min(labe))/(np.max(labe) - np.min(labe)) * 255).astype(np.uint8)
-            # labe_vis = contour_visualize(labe, img)
+            labe_c  = contour_visualize(labe, img)
             
             pr_proj_input = proj_visualize(prediction[start_level+1], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
             input = make_grid(pr_proj_input.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             input_vis = ((input - np.min(input))/(np.max(input) - np.min(input)) * 255).astype(np.uint8)
-            # input_vis = contour_visualize(input, img, (0, 0, 255))
+            input_c = contour_visualize(input, img, (0, 0, 255))
 
-            result = np.concatenate((img_vis, labe_vis, input_vis), 0)
+            result = np.concatenate((img_vis, labe_vis, labe_c, input_vis, input_c), 0)
 
             for idx in list(prediction.keys())[1:]:
                 pr_proj_pred = proj_visualize(prediction[idx], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])    
                 pred = make_grid(pr_proj_pred.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
                 pred_vis = ((pred - np.min(pred))/(np.max(pred) - np.min(pred)) * 255).astype(np.uint8)
-                # pred_vis = contour_visualize(pred, img, (0, 0, 255))
+                pred_c = contour_visualize(pred, img, (0, 0, 255))
 
-                result = np.concatenate((result, pred_vis), 0)
+                result = np.concatenate((result, pred_vis, (pred_c//2 + labe_c//2)), 0)
 
             plt.imsave(f'{result_path}/result_{batch_idx}.png', result)
 

@@ -29,6 +29,4 @@ def grid_distance_loss(in_RT, out_RT, gt_RT, grid_crop, coeffi_crop, **kwargs):
     grid_subtract = pr_grid_proj - gt_grid_proj.detach()
     loss = torch.sqrt(grid_subtract.pow(2).sum(-1) + 1e-6).mean()     # --> loss with 3d grid, sqrt(pow) to avoid nan in norm
     loss += F.mse_loss(obj_dist, obj_dist_gt.detach())
-    if not torch.isfinite(loss):
-        import ipdb; ipdb.set_trace()
     return loss
