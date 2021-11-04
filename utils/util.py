@@ -517,7 +517,7 @@ def proj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
 def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
     ###### grid distance change
     obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
-    grid_proj_origin =grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
+    grid_proj_origin = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
     ###### Projective Grid Generator
     pr_grid_proj = grid_transformer(grid_proj_origin, RT)
     return pr_grid_proj, obj_dist

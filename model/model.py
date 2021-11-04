@@ -14,28 +14,33 @@ import numpy as np
 from base import BaseModel
 from utils.util import (
     apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, bbox_add_noise, invert_T, orthographic_pool, proj_visualize, projective_pool, dynamic_projective_stn,
-    FX, FY, PX, PY, UNIT_CUBE_VERTEX, z_buffer_min, grid_sampler, grid_transformer, get_roi_feature, ProST_grid
+    FX, FY, PX, PY, UNIT_CUBE_VERTEX, z_buffer_min, z_buffer_max, grid_sampler, grid_transformer, get_roi_feature, ProST_grid
 )
 
 class LocalizationNetwork(nn.Module):
-    def __init__(self, model_name):
+    def __init__(self, model_name, occlusion):
         super().__init__()
+        if occlusion:
+            input_channel = 9
+        else:
+            input_channel = 6
+
         if model_name == 'res18':
             backbone = models.resnet18(pretrained=True)
             backbone = nn.Sequential(*(list(backbone.children())[:-2]))
-            backbone[0] = nn.Conv2d(3+3, 64, 3, 2, 2)
+            backbone[0] = nn.Conv2d(input_channel, 64, 3, 2, 2)
             setattr(backbone, "n_features", 512)
         
         if model_name == 'res34':
             backbone = models.resnet34(pretrained=True)
             backbone = nn.Sequential(*(list(backbone.children())[:-2]))
-            backbone[0] = nn.Conv2d(3+3, 64, 3, 2, 2)
+            backbone[0] = nn.Conv2d(input_channel, 64, 3, 2, 2)
             setattr(backbone, "n_features", 512)
 
         if model_name == 'res50':
-            backbone = models.resnet34(pretrained=True)
+            backbone = models.resnet50(pretrained=True)
             backbone = nn.Sequential(*(list(backbone.children())[:-2]))
-            backbone[0] = nn.Conv2d(3+3, 64, 3, 2, 2)
+            backbone[0] = nn.Conv2d(input_channel, 64, 3, 2, 2)
             setattr(backbone, "n_features", 2048)
         self.model = backbone
 
@@ -59,7 +64,7 @@ class LocalizationNetwork(nn.Module):
         
 
 class ProjectivePose(BaseModel):
-    def __init__(self, img_ratio, input_size, ftr_size, start_level, end_level, model_name='res18', pose_dim=9, N_z = 100, training=True):
+    def __init__(self, img_ratio, input_size, ftr_size, start_level, end_level, model_name='res18', occlusion=True, pose_dim=9, N_z = 100, training=True):
         super(ProjectivePose, self).__init__()
         self.pose_dim = pose_dim
 
@@ -81,12 +86,13 @@ class ProjectivePose(BaseModel):
         self.start_level = start_level
         self.end_level  = end_level
         self.training = training
+        self.occlusion = occlusion
 
         # self.proj_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
         # self.image_backbone = resnet_fpn_backbone('resnet18', pretrained=True, trainable_layers=0)
         self.local_network = nn.ModuleDict()
         for level in range(self.start_level, self.end_level-1, -1):
-            self.local_network[str(level)] = LocalizationNetwork(model_name)
+            self.local_network[str(level)] = LocalizationNetwork(model_name, self.occlusion)
         # self.local_network = LocalizationNetwork()
         ### for Orthographic Pooling ###
         t0 = torch.tensor([0, 0, 0]).unsqueeze(0).unsqueeze(2)
@@ -217,17 +223,38 @@ class ProjectivePose(BaseModel):
 
         for level in range(self.start_level, self.end_level-1, -1):
         # for level in range(1, 0, -1):
-            pr_RT[level] = self.projective_pose(self.local_network[str(level)], pr_RT[level+1].detach(), P['ftr'], P['ftr_mask'], P['roi_feature'], P['grid_crop'], P['coeffi_crop'], P['K_crop'])
+            pr_RT[level] = self.projective_pose(
+                self.local_network[str(level)], 
+                pr_RT[level+1].detach(), 
+                P['ftr'], 
+                P['ftr_mask'], 
+                P['roi_feature'], 
+                P['grid_crop'], 
+                P['coeffi_crop'], 
+                P['K_crop'])
 
         return pr_RT, P
 
 
     def projective_pose(self, local_network, previous_RT, ftr, ftr_mask, roi_feature, grid_crop, coeffi_crop, K_crop):
-        ###### Projective Grid generation and projection
-        pr_proj = proj_visualize(previous_RT, grid_crop, coeffi_crop, ftr, ftr_mask)
+        ###### Dynamic Projective STN
+        pr_grid_proj, obj_dist = dynamic_projective_stn(previous_RT, grid_crop, coeffi_crop)
+        ####### sample ftr to 2D
+        pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
+
         ###### concatenate
-        pr_proj = F.interpolate(pr_proj, (self.input_size, self.input_size), mode='bilinear', align_corners=True)
-        loc_input = torch.cat((pr_proj, roi_feature), 1)
+        if self.occlusion:
+            ###### z-buffering
+            pr_proj_min, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
+            pr_proj_max, _ = z_buffer_max(pr_ftr, pr_ftr_mask)
+            pr_proj_min = F.interpolate(pr_proj_min, (self.input_size, self.input_size), mode='bilinear', align_corners=True)
+            pr_proj_max = F.interpolate(pr_proj_max, (self.input_size, self.input_size), mode='bilinear', align_corners=True)
+            loc_input = torch.cat((pr_proj_min, pr_proj_max, roi_feature), 1)
+        else:
+            ###### z-buffering
+            pr_proj, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
+            pr_proj = F.interpolate(pr_proj, (self.input_size, self.input_size), mode='bilinear', align_corners=True)
+            loc_input = torch.cat((pr_proj, roi_feature), 1)
         ###### Localization Network 
         prediction = local_network(loc_input)
         ###### update pose
