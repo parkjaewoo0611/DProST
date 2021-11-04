@@ -1,6 +1,6 @@
 {
     "name": "ProjectivePose",
-    "gpu_id": "0",
+    "gpu_id": "1",
     "arch": {
         "type": "ProjectivePose",
         "args": {
@@ -10,7 +10,7 @@
             "start_level": 3,
             "end_level": 0,
             "model_name": "res50",
-            "occlusion": true,
+            "occlusion": false,
             "N_z": 100
         }
     },
@@ -18,7 +18,7 @@
         "type": "DataLoader",
         "args":{
             "data_dir": "../Dataset/LINEMOD",
-            "batch_size": 2,
+            "batch_size": 16,
             "obj_list" : [5],
             "reference_N": 8,
             "is_pbr": false,
@@ -59,7 +59,7 @@
         "epochs": 2000,
 
         "save_dir": "saved/",
-        "save_period": 1,
+        "save_period": 100,
         "verbosity": 2,
         
         "monitor": "min val_loss",
