@@ -76,6 +76,8 @@ if __name__ == '__main__':
                       help='start level')
     args.add_argument('-e', '--end_level', default=None, type=int,
                       help='end level')
+    args.add_argument('--result_path', default=None, type=str,
+                      help='result saved path')
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
