@@ -43,7 +43,10 @@ class DataLoader(BaseDataLoader):
 
         self.dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset) if batch['obj_id'] in self.obj_list]
         # self.dataset = self.dataset[0:4]
-
+        
+        self.obj_dataset = {}
+        for obj in self.obj_list:
+            self.obj_dataset[obj] = [(batch, target) for i, (batch, target) in enumerate(self.dataset_train) if batch['obj_id'] is obj]
 
         #### self.dataset --> (batch, target) tuple
         super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=self.collate_fn)
@@ -53,7 +56,7 @@ class DataLoader(BaseDataLoader):
         ##### for reference
         references = {}
         for obj_id in self.obj_list:
-            obj_dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset_train) if batch['obj_id'] is obj_id]
+            obj_dataset = self.obj_dataset[obj_id]
             if self.FPS:
                 ref = farthest_rotation_sampling(obj_dataset, self.reference_N)
             else:

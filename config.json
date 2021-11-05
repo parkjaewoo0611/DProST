@@ -17,8 +17,8 @@
     "data_loader": {
         "type": "DataLoader",
         "args":{
-            "data_dir": "../Dataset/LINEMOD",
-            "batch_size": 8,
+            "data_dir": "../Dataset/OCCLUSION",
+            "batch_size": 2,
             "obj_list" : [5],
             "reference_N": 8,
             "is_pbr": true,
@@ -32,7 +32,7 @@
     "mesh_loader": {
         "type": "MeshesLoader",
         "args":{
-            "mesh_dir": "../Dataset/LINEMOD/models",
+            "mesh_dir": "../Dataset/OCCLUSION/models",
             "obj_list" : [5],
             "render_size" : 128
         }
