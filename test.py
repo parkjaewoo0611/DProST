@@ -31,7 +31,7 @@ def main(config):
     # setup data_loader instances
     data_loader = getattr(module_data, config['data_loader']['type'])(
         config['data_loader']['args']['data_dir'],
-        batch_size=8,
+        batch_size=4,
         obj_list=config['data_loader']['args']['obj_list'],
         img_ratio=config['data_loader']['args']['img_ratio'],
         shuffle=False,
@@ -139,13 +139,13 @@ def main(config):
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default='saved/models/ProjectivePose/1105_033104/config.json', type=str,
+    args.add_argument('-c', '--config', default='saved/models/ProjectivePose/1105_035952/config.json', type=str,
                       help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default='saved/models/ProjectivePose/1105_033104/checkpoint-epoch1.pth', type=str,
+    args.add_argument('-r', '--resume', default='saved/models/ProjectivePose/1105_035952/checkpoint-epoch1.pth', type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')
-    args.add_argument('--result_path', default='saved/results/1105_033104', type=str,
+    args.add_argument('--result_path', default='saved/results/1105_035952', type=str,
                       help='result saved path')
     args.add_argument('-s', '--start_level', default=None, type=int,
                       help='start level')
