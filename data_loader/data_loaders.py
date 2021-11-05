@@ -36,6 +36,7 @@ class DataLoader(BaseDataLoader):
                 with open(os.path.join(data_dir, 'train_pbr.pickle'), 'rb') as f:
                     self.dataset_pbr = pickle.load(f)
                 self.dataset_pbr = [(batch, target) for i, (batch, target) in enumerate(self.dataset_pbr) if batch['obj_id'] in self.obj_list]
+                self.dataset_pbr = [(batch, target) for i, (batch, target) in enumerate(self.dataset_pbr) if target['visib_fract'] > 0.2]
         else:
             with open(os.path.join(data_dir, 'test.pickle'), 'rb') as f:
                 self.dataset = pickle.load(f)
