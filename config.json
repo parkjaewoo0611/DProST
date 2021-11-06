@@ -22,7 +22,7 @@
             "obj_list" : [5],
             "reference_N": 8,
             "is_pbr": true,
-            "img_ratio" : 1.0,
+            "img_ratio" : 0.5,
             "shuffle": true,
             "validation_split": 0.1,
             "num_workers": 2,
