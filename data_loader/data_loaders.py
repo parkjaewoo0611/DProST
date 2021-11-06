@@ -99,7 +99,7 @@ class DataLoader(BaseDataLoader):
             RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
             RTs.append(RT)
 
-        if self.is_pbr and self.training:
+        if self.is_pbr and self.training and not reference:
             data_pbr = random.sample(self.dataset_pbr, len(data))
             for idx, (batch_sample, target_sample) in enumerate(data_pbr):
                 images.append(self.transform(np.array(Image.open(batch_sample['image']))))

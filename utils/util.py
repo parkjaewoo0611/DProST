@@ -81,6 +81,7 @@ from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
 from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle
 from torchvision.ops import roi_align
 import cv2
+from PIL import Image
 
 def TCO_symmetry(TCO_label, mesh_info_batch, continuous_symmetry_N=8):
     bsz = TCO_label.shape[0]
@@ -558,7 +559,8 @@ def farthest_rotation_sampling(dataset, N):
     farthest_idx = np.zeros(N)
     farthest_Rs = np.zeros([N, 3, 3])
     Rs = torch.tensor(np.stack([target['RT'][:3, :3] for i, (batch, target) in enumerate(dataset)]))
-    farthest_idx[0] = np.random.randint(Rs.shape[0])
+    mask_pixel_N = [np.array(Image.open(data[1]['mask'])).sum() for data in dataset]
+    farthest_idx[0] = np.array(mask_pixel_N).argmax()
     farthest_Rs[0] = Rs[int(farthest_idx[0])]
     distances = so3_relative_angle(torch.tensor(farthest_Rs[0]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs)
     for i in range(1, N):
@@ -581,31 +583,31 @@ def orthographic_pool(grids, mask, feature, ftr_size):
     grid_r = grid_r.clone().to(r_feature.device).repeat(bsz, 1, 1, 1, 1)
 
     ## 3d mask
-    f_mask_3d = F.interpolate(f_mask, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
-    t_mask_3d = F.interpolate(t_mask, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
-    r_mask_3d = F.interpolate(r_mask, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+    f_mask_3d = F.interpolate(f_mask, (ftr_size, ftr_size))  
+    t_mask_3d = F.interpolate(t_mask, (ftr_size, ftr_size))  
+    r_mask_3d = F.interpolate(r_mask, (ftr_size, ftr_size))  
 
     f_mask_3d = f_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
     t_mask_3d = t_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
     r_mask_3d = r_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
 
-    f_mask_3d = F.grid_sample(f_mask_3d, grid_f, mode='bilinear', align_corners=True)
-    t_mask_3d = F.grid_sample(t_mask_3d, grid_t, mode='bilinear', align_corners=True)
-    r_mask_3d = F.grid_sample(r_mask_3d, grid_r, mode='bilinear', align_corners=True)
+    f_mask_3d = F.grid_sample(f_mask_3d, grid_f)
+    t_mask_3d = F.grid_sample(t_mask_3d, grid_t)
+    r_mask_3d = F.grid_sample(r_mask_3d, grid_r)
     ftr_mask_3d = f_mask_3d * t_mask_3d * r_mask_3d
 
     ## 3d image
-    f_3d = F.interpolate(f_feature, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
-    t_3d = F.interpolate(t_feature, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
-    r_3d = F.interpolate(r_feature, (ftr_size, ftr_size), mode='bilinear', align_corners=True)  
+    f_3d = F.interpolate(f_feature, (ftr_size, ftr_size))  
+    t_3d = F.interpolate(t_feature, (ftr_size, ftr_size))  
+    r_3d = F.interpolate(r_feature, (ftr_size, ftr_size))  
 
     f_3d = f_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
     t_3d = t_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
     r_3d = r_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
 
-    f_3d = F.grid_sample(f_3d, grid_f, mode='bilinear', align_corners=True)
-    t_3d = F.grid_sample(t_3d, grid_t, mode='bilinear', align_corners=True)
-    r_3d = F.grid_sample(r_3d, grid_r, mode='bilinear', align_corners=True)
+    f_3d = F.grid_sample(f_3d, grid_f)
+    t_3d = F.grid_sample(t_3d, grid_t)
+    r_3d = F.grid_sample(r_3d, grid_r)
 
     ftr_3d = (f_3d + t_3d + r_3d) / 3   
     ftr_3d = ftr_3d * ftr_mask_3d
@@ -629,8 +631,8 @@ def projective_pool(grid_p, masks, features, RT, K_crop, ftr_size):
     features_3d = features.unsqueeze(2)
     masks_3d = masks.unsqueeze(2)
 
-    ftr_mask_3d = F.grid_sample(masks_3d, xyz, mode='bilinear', align_corners=True)
-    ftr_3d = F.grid_sample(features_3d, xyz, mode='bilinear', align_corners=True)
+    ftr_mask_3d = F.grid_sample(masks_3d, xyz)
+    ftr_3d = F.grid_sample(features_3d, xyz)
 
     ftr_mask_3d = torch.prod(ftr_mask_3d, 0, keepdim=True)
     ftr_3d = ftr_3d.sum(0, keepdim=True)
@@ -638,8 +640,8 @@ def projective_pool(grid_p, masks, features, RT, K_crop, ftr_size):
     ftr_3d = ftr_3d * ftr_mask_3d
 
     grid_p = grid_p.clone()
-    ftr_mask_3d = F.grid_sample(ftr_mask_3d, grid_p, mode='bilinear', align_corners=True)
-    ftr_3d = F.grid_sample(ftr_3d, grid_p, mode='bilinear', align_corners=True)
+    ftr_mask_3d = F.grid_sample(ftr_mask_3d, grid_p)
+    ftr_3d = F.grid_sample(ftr_3d, grid_p)
             
     return ftr_3d, ftr_mask_3d
 

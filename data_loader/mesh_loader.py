@@ -30,7 +30,7 @@ class MeshesLoader():
         self.MESH_INFO = self.load_mesh_info()
         self.PTS_DICT = self.sample_pts()
         self.on_device()
-        self.RENDER_DICT = self.render_default(render_size)
+        # self.RENDER_DICT = self.render_default(render_size)
 
 
     def load_meshes(self):
@@ -82,61 +82,61 @@ class MeshesLoader():
             self.PTS_DICT[obj_id] = self.PTS_DICT[obj_id].to(self.device)
 
 
-    def render_default(self, size):
-        ### for Orthographic Pooling ###
-        R_f = euler_angles_to_matrix(torch.tensor([-np.pi/2, 0, 0]), 'XYZ').unsqueeze(0).to(self.device)
-        R_t = torch.eye(3).unsqueeze(0).to(self.device)
-        R_r = euler_angles_to_matrix(torch.tensor([0, np.pi/2, 0]), 'XYZ').unsqueeze(0).to(self.device)
+    # def render_default(self, size):
+    #     ### for Orthographic Pooling ###
+    #     R_f = euler_angles_to_matrix(torch.tensor([-np.pi/2, 0, 0]), 'XYZ').unsqueeze(0).to(self.device)
+    #     R_t = torch.eye(3).unsqueeze(0).to(self.device)
+    #     R_r = euler_angles_to_matrix(torch.tensor([0, np.pi/2, 0]), 'XYZ').unsqueeze(0).to(self.device)
 
 
-        t_i = torch.tensor(np.array([0, 0, 1.0])).float().unsqueeze(0).to(self.device)
+    #     t_i = torch.tensor(np.array([0, 0, 1.0])).float().unsqueeze(0).to(self.device)
 
-        cameras_o_f = OrthographicCameras(
-            image_size = size,
-            R=R_f,
-            T=t_i,
-            in_ndc=True,
-            device=self.device)
+    #     cameras_o_f = OrthographicCameras(
+    #         image_size = size,
+    #         R=R_f,
+    #         T=t_i,
+    #         in_ndc=True,
+    #         device=self.device)
 
-        cameras_o_t = OrthographicCameras(
-            image_size = size, 
-            R=R_t, 
-            T=t_i, 
-            in_ndc=True, 
-            device=self.device)
+    #     cameras_o_t = OrthographicCameras(
+    #         image_size = size, 
+    #         R=R_t, 
+    #         T=t_i, 
+    #         in_ndc=True, 
+    #         device=self.device)
 
-        cameras_o_r = OrthographicCameras(
-            image_size = size, 
-            R=R_r, 
-            T=t_i, 
-            in_ndc=True, 
-            device=self.device)
+    #     cameras_o_r = OrthographicCameras(
+    #         image_size = size, 
+    #         R=R_r, 
+    #         T=t_i, 
+    #         in_ndc=True, 
+    #         device=self.device)
 
-        raster_settings = RasterizationSettings(
-            image_size=size,
-            blur_radius=5e-5,
-            faces_per_pixel=1)
+    #     raster_settings = RasterizationSettings(
+    #         image_size=size,
+    #         blur_radius=5e-5,
+    #         faces_per_pixel=1)
 
-        shader_f = HardPhongShader(device=self.device, cameras=cameras_o_f)
-        shader_t = HardPhongShader(device=self.device, cameras=cameras_o_t)
-        shader_r = HardPhongShader(device=self.device, cameras=cameras_o_r)
+    #     shader_f = HardPhongShader(device=self.device, cameras=cameras_o_f)
+    #     shader_t = HardPhongShader(device=self.device, cameras=cameras_o_t)
+    #     shader_r = HardPhongShader(device=self.device, cameras=cameras_o_r)
 
-        rasterizer_f = MeshRasterizer(cameras=cameras_o_f, raster_settings=raster_settings)
-        rasterizer_t = MeshRasterizer(cameras=cameras_o_t, raster_settings=raster_settings)
-        rasterizer_r = MeshRasterizer(cameras=cameras_o_r, raster_settings=raster_settings)
+    #     rasterizer_f = MeshRasterizer(cameras=cameras_o_f, raster_settings=raster_settings)
+    #     rasterizer_t = MeshRasterizer(cameras=cameras_o_t, raster_settings=raster_settings)
+    #     rasterizer_r = MeshRasterizer(cameras=cameras_o_r, raster_settings=raster_settings)
 
-        phong_renderer_f = MeshRenderer(rasterizer=rasterizer_f, shader=shader_f)
-        phong_renderer_t = MeshRenderer(rasterizer=rasterizer_t, shader=shader_t)
-        phong_renderer_r = MeshRenderer(rasterizer=rasterizer_r, shader=shader_r)
+    #     phong_renderer_f = MeshRenderer(rasterizer=rasterizer_f, shader=shader_f)
+    #     phong_renderer_t = MeshRenderer(rasterizer=rasterizer_t, shader=shader_t)
+    #     phong_renderer_r = MeshRenderer(rasterizer=rasterizer_r, shader=shader_r)
 
-        render_dict = {}
-        for obj_id in self.MESH_DICT.keys():
-            render_dict[obj_id] = {
-                                    'front' : phong_renderer_f(self.MESH_DICT[obj_id]),
-                                    'top' : phong_renderer_t(self.MESH_DICT[obj_id]),
-                                    'right' : phong_renderer_r(self.MESH_DICT[obj_id])
-                                  }
-        return render_dict
+    #     render_dict = {}
+    #     for obj_id in self.MESH_DICT.keys():
+    #         render_dict[obj_id] = {
+    #                                 'front' : phong_renderer_f(self.MESH_DICT[obj_id]),
+    #                                 'top' : phong_renderer_t(self.MESH_DICT[obj_id]),
+    #                                 'right' : phong_renderer_r(self.MESH_DICT[obj_id])
+    #                               }
+    #     return render_dict
 
 
     def batch_meshes(self, id_batch):
@@ -162,10 +162,10 @@ class MeshesLoader():
         return pts_batch
 
 
-    def batch_render(self, id_batch):
-        id_batch = id_batch.cpu().numpy()
-        front = torch.cat([self.RENDER_DICT[id]['front'] for id in id_batch], 0)
-        top = torch.cat([self.RENDER_DICT[id]['top'] for id in id_batch], 0)
-        right = torch.cat([self.RENDER_DICT[id]['right'] for id in id_batch], 0)
+    # def batch_render(self, id_batch):
+    #     id_batch = id_batch.cpu().numpy()
+    #     front = torch.cat([self.RENDER_DICT[id]['front'] for id in id_batch], 0)
+    #     top = torch.cat([self.RENDER_DICT[id]['top'] for id in id_batch], 0)
+    #     right = torch.cat([self.RENDER_DICT[id]['right'] for id in id_batch], 0)
 
-        return front, top, right
+    #     return front, top, right

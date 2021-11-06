@@ -20,7 +20,7 @@ import numpy as np
 import warnings
 warnings.filterwarnings("ignore") 
 
-def main(config):
+def main(config, start_level, end_level):
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"]= config["gpu_id"]
     # prepare model for testing
@@ -31,7 +31,7 @@ def main(config):
     # setup data_loader instances
     data_loader = getattr(module_data, config['data_loader']['type'])(
         config['data_loader']['args']['data_dir'],
-        batch_size=4,
+        batch_size=1,
         obj_list=config['data_loader']['args']['obj_list'],
         img_ratio=config['data_loader']['args']['img_ratio'],
         shuffle=False,
@@ -66,11 +66,12 @@ def main(config):
     model.eval()
     model.training = False
 
+    # set iteration setting
+    model.start_level = start_level
+    model.end_level = end_level
+
     total_loss = 0.0
     total_metrics = torch.zeros(len(metric_fns))
-
-    start_level = config["arch"]["args"]["start_level"]
-    end_level = config["arch"]["args"]["end_level"]
 
     ftr = {}
     ftr_mask = {}
@@ -83,12 +84,11 @@ def main(config):
     with torch.no_grad():
         for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(tqdm(data_loader)):
             images, masks, bboxes, RTs = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device)
-            front, top, right = mesh_loader.batch_render(obj_ids)
             meshes = mesh_loader.batch_meshes(obj_ids)
             ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
             ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
-            prediction, P = model(images, ftrs, ftr_masks, front, top, right, bboxes, obj_ids, RTs)
+            prediction, P = model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
 
             # computing loss, metrics on test set          
             loss = 0
@@ -139,17 +139,18 @@ def main(config):
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default='saved/models/ProjectivePose/1105_193132/config.json', type=str,
+    args.add_argument('-c', '--config', default='saved/models/8reference-res50-true.occlusion-1300epoch/5/config.json', type=str,
                       help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default='saved/models/ProjectivePose/1105_193132/checkpoint-epoch1.pth', type=str,
+    args.add_argument('-r', '--resume', default='saved/models/8reference-res50-true.occlusion-1300epoch/5/checkpoint-epoch1300.pth', type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')
-    args.add_argument('--result_path', default='saved/results/1105_193132', type=str,
+    args.add_argument('--result_path', default='saved/results/8reference-res50-true.occlusion-1300epoch/5', type=str,
                       help='result saved path')
-    args.add_argument('-s', '--start_level', default=None, type=int,
+    args.add_argument('-s', '--start_level', default=2, type=int,
                       help='start level')
-    args.add_argument('-e', '--end_level', default=None, type=int,
+    args.add_argument('-e', '--end_level', default=0, type=int,
                       help='end level')
     config = ConfigParser.from_args(args)
-    main(config)
+    args = args.parse_args()
+    main(config, args.start_level, args.end_level)

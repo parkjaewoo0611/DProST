@@ -31,7 +31,6 @@ def grid_distance_loss(in_RT, out_RT, gt_RT, grid_crop, coeffi_crop, **kwargs):
     # accurately, sqrt using and sum over xyz first is rightis right, 
     # but since grad at 0 of sqrt = inf, which need 1e-9 term hinder to loss to go 0, approaximate to mse
     #TODO: check above is right
-    loss = F.mse_loss(pr_grid_proj, gt_grid_proj.detach())
-    loss += F.mse_loss(obj_dist, obj_dist_gt.detach())
-
+    loss = torch.sqrt(F.mse_loss(pr_grid_proj, gt_grid_proj.detach(), reduce=False).sum(-1) + 1e-9).mean()
+    loss += F.l1_loss(obj_dist, obj_dist_gt.detach())
     return loss

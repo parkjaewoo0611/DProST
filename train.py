@@ -27,7 +27,7 @@ def main(config):
     os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
     # prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config['gpu_id'])
-
+    
     logger = config.get_logger('train')
 
     # setup data_loader instances
@@ -72,17 +72,16 @@ if __name__ == '__main__':
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default=None, type=str,
                       help='indices of GPUs to enable (default: all)')
-    args.add_argument('-s', '--start_level', default=None, type=int,
-                      help='start level')
-    args.add_argument('-e', '--end_level', default=None, type=int,
-                      help='end level')
     args.add_argument('--result_path', default=None, type=str,
                       help='result saved path')
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
-        CustomArgs(['--lr', '--learning_rate'], type=float, target='optimizer;args;lr'),
-        CustomArgs(['--bs', '--batch_size'], type=int, target='data_loader;args;batch_size')
+        CustomArgs(['--is_pbr'], type=bool, target='data_loader;args;is_pbr'),
+        CustomArgs(['--data_dir'], type=str, target='data_loader;args;data_dir'),
+        CustomArgs(['--mesh_dir'], type=str, target='mesh_loader;args;mesh_dir'),
+        CustomArgs(['--data_obj_list'], type=int, target='data_loader;args;obj_list'),
+        CustomArgs(['--mesh_obj_list'], type=int, target='mesh_loader;args;obj_list'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

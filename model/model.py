@@ -134,7 +134,7 @@ class ProjectivePose(BaseModel):
         return ftr, ftr_mask
 
 
-    def forward(self, images, ftr, ftr_mask, front, top, right, bboxes, obj_ids, gt_RT):
+    def forward(self, images, ftr, ftr_mask, bboxes, obj_ids, gt_RT):
         bsz = images.shape[0]
         K_batch = self.K.repeat(bsz, 1, 1).to(bboxes.device)
         # unit_cube_vertex = UNIT_CUBE_VERTEX.unsqueeze(0).repeat(bsz, 1, 1).to(bboxes.device)
@@ -222,7 +222,6 @@ class ProjectivePose(BaseModel):
 
 
         for level in range(self.start_level, self.end_level-1, -1):
-        # for level in range(1, 0, -1):
             pr_RT[level] = self.projective_pose(
                 self.local_network[str(level)], 
                 pr_RT[level+1].detach(), 
@@ -247,13 +246,13 @@ class ProjectivePose(BaseModel):
             ###### z-buffering
             pr_proj_min, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
             pr_proj_max, _ = z_buffer_max(pr_ftr, pr_ftr_mask)
-            pr_proj_min = F.interpolate(pr_proj_min, (self.input_size, self.input_size), mode='bilinear', align_corners=True)
-            pr_proj_max = F.interpolate(pr_proj_max, (self.input_size, self.input_size), mode='bilinear', align_corners=True)
+            pr_proj_min = F.interpolate(pr_proj_min, (self.input_size, self.input_size))
+            pr_proj_max = F.interpolate(pr_proj_max, (self.input_size, self.input_size))
             loc_input = torch.cat((pr_proj_min, pr_proj_max, roi_feature), 1)
         else:
             ###### z-buffering
             pr_proj, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
-            pr_proj = F.interpolate(pr_proj, (self.input_size, self.input_size), mode='bilinear', align_corners=True)
+            pr_proj = F.interpolate(pr_proj, (self.input_size, self.input_size))
             loc_input = torch.cat((pr_proj, roi_feature), 1)
         ###### Localization Network 
         prediction = local_network(loc_input)

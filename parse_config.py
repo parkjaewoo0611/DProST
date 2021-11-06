@@ -53,7 +53,11 @@ class ConfigParser:
         Initialize this class from some cli arguments. Used in train, test.
         """
         for opt in options:
-            args.add_argument(*opt.flags, default=None, type=opt.type)
+            if opt.type is not int:
+                args.add_argument(*opt.flags, default=None, type=opt.type)
+            if opt.type == int:
+                args.add_argument(*opt.flags, nargs="*", type=opt.type)
+
         if not isinstance(args, tuple):
             args = args.parse_args()
 
@@ -75,10 +79,6 @@ class ConfigParser:
         modification = {opt.target : getattr(args, _get_opt_name(opt.flags)) for opt in options}
         if args.device is not None:
             config["gpu_id"] = args.device
-        if args.start_level is not None:
-            config["arch"]["args"]["start_level"] = args.start_level
-        if args.end_level is not None:
-            config["arch"]["args"]["end_level"] = args.end_level
         if args.result_path is not None:
             config["result_path"] = args.result_path
         return cls(config, resume, modification)
