@@ -6,7 +6,7 @@ from operator import getitem
 from datetime import datetime
 from logger import setup_logging
 from utils import read_json, write_json
-
+import argparse
 
 class ConfigParser:
     def __init__(self, config, resume=None, modification=None, run_id=None):
@@ -53,10 +53,13 @@ class ConfigParser:
         Initialize this class from some cli arguments. Used in train, test.
         """
         for opt in options:
-            if opt.type is not int:
-                args.add_argument(*opt.flags, default=None, type=opt.type)
             if opt.type == int:
                 args.add_argument(*opt.flags, nargs="*", type=opt.type)
+            elif opt.type == bool:
+                args.add_argument(*opt.flags, default=None, type=str2bool)
+            elif opt.type is not int:
+                args.add_argument(*opt.flags, default=None, type=opt.type)
+
 
         if not isinstance(args, tuple):
             args = args.parse_args()
@@ -161,3 +164,13 @@ def _set_by_path(tree, keys, value):
 def _get_by_path(tree, keys):
     """Access a nested object in tree by sequence of keys."""
     return reduce(getitem, keys, tree)
+
+def str2bool(v): 
+    if isinstance(v, bool): 
+        return v 
+    if v.lower() in ('yes', 'true', 't', 'y', '1'): 
+        return True 
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'): 
+        return False 
+    else: 
+        raise argparse.ArgumentTypeError('Boolean value expected.')

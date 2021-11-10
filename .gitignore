@@ -1,6 +1,8 @@
 from_server.sh
-result.sh
+result_lmo.sh
+result_lm.sh
 *.png
+visualize.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
