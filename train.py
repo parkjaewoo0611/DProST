@@ -77,6 +77,7 @@ if __name__ == '__main__':
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
+        CustomArgs(['--occlusion'], type=bool, target='arch;args;occlusion'),
         CustomArgs(['--is_pbr'], type=bool, target='data_loader;args;is_pbr'),
         CustomArgs(['--data_dir'], type=str, target='data_loader;args;data_dir'),
         CustomArgs(['--mesh_dir'], type=str, target='mesh_loader;args;mesh_dir'),
