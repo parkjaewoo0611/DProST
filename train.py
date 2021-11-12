@@ -83,6 +83,7 @@ if __name__ == '__main__':
         CustomArgs(['--mesh_dir'], type=str, target='mesh_loader;args;mesh_dir'),
         CustomArgs(['--data_obj_list'], type=int, target='data_loader;args;obj_list'),
         CustomArgs(['--mesh_obj_list'], type=int, target='mesh_loader;args;obj_list'),
+        CustomArgs(['--loss'], type=str, target='loss'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)
