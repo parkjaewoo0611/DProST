@@ -18,7 +18,7 @@
         "type": "DataLoader",
         "args":{
             "data_dir": "../Dataset/OCCLUSION",
-            "batch_size": 4,
+            "batch_size": 1,
             "obj_list" : [5],
             "reference_N": 8,
             "is_pbr": true,

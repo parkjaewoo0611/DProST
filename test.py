@@ -31,7 +31,7 @@ def main(config, start_level, end_level):
     # setup data_loader instances
     data_loader = getattr(module_data, config['data_loader']['type'])(
         config['data_loader']['args']['data_dir'],
-        batch_size=1,
+        batch_size=2,
         obj_list=config['data_loader']['args']['obj_list'],
         img_ratio=config['data_loader']['args']['img_ratio'],
         shuffle=False,
@@ -89,6 +89,7 @@ def main(config, start_level, end_level):
             ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
             prediction, P = model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
+            P['vertexes'] = torch.stack([mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
 
             # computing loss, metrics on test set          
             loss = 0

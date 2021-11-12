@@ -61,6 +61,7 @@ class Trainer(BaseTrainer):
 
             self.optimizer.zero_grad()
             prediction, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
+            P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
             loss = 0
             for idx in list(prediction.keys())[1:]:
                 loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **P)
@@ -120,6 +121,8 @@ class Trainer(BaseTrainer):
                 ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
                 prediction, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
+                P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
+                
                 loss = 0
                 for idx in list(prediction.keys())[1:]:
                     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **P)
