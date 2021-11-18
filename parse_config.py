@@ -54,7 +54,7 @@ class ConfigParser:
         """
         for opt in options:
             if opt.type == list:
-                args.add_argument(*opt.flags, nargs="*", type=opt.type)
+                args.add_argument(*opt.flags, nargs="*", type=int)
             elif opt.type == bool:
                 args.add_argument(*opt.flags, default=None, type=str2bool)
             elif opt.type is not list:

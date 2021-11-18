@@ -52,7 +52,6 @@ class Trainer(BaseTrainer):
         self.model.training = True
         self.train_metrics.reset()
 
-
         for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
             images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
             meshes = self.mesh_loader.batch_meshes(obj_ids)
@@ -122,7 +121,7 @@ class Trainer(BaseTrainer):
 
                 prediction, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
                 P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
-                
+
                 loss = 0
                 for idx in list(prediction.keys())[1:]:
                     loss += self.criterion(prediction[idx+1], prediction[idx], RTs, **P)
