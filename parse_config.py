@@ -53,11 +53,11 @@ class ConfigParser:
         Initialize this class from some cli arguments. Used in train, test.
         """
         for opt in options:
-            if opt.type == int:
+            if opt.type == list:
                 args.add_argument(*opt.flags, nargs="*", type=opt.type)
             elif opt.type == bool:
                 args.add_argument(*opt.flags, default=None, type=str2bool)
-            elif opt.type is not int:
+            elif opt.type is not list:
                 args.add_argument(*opt.flags, default=None, type=opt.type)
 
 

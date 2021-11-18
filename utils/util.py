@@ -550,7 +550,7 @@ def contour_visualize(render, img, color=(0, 255, 0)):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     _, thr_image = cv2.threshold(render, 10, 255, 0)
     contours, hierarchy = cv2.findContours(thr_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    result = cv2.drawContours(img, contours, -1, color, 1)
+    result = cv2.drawContours(img, contours, -1, color, 3)
     return result
 
 
