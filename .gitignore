@@ -3,6 +3,7 @@ result_lmo.sh
 result_lm.sh
 *.png
 visualize.py
+result*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
