@@ -107,6 +107,7 @@ data/
 input/
 saved/
 datasets/
+CVPR_saved/
 
 # editor, os cache directory
 .vscode/
