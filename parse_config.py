@@ -6,7 +6,7 @@ from operator import getitem
 from datetime import datetime
 from logger import setup_logging
 from utils import read_json, write_json
-
+import argparse
 
 class ConfigParser:
     def __init__(self, config, resume=None, modification=None, run_id=None):
@@ -53,12 +53,17 @@ class ConfigParser:
         Initialize this class from some cli arguments. Used in train, test.
         """
         for opt in options:
-            args.add_argument(*opt.flags, default=None, type=opt.type)
+            if opt.type == list:
+                args.add_argument(*opt.flags, nargs="*", type=int)
+            elif opt.type == bool:
+                args.add_argument(*opt.flags, default=None, type=str2bool)
+            elif opt.type is not list:
+                args.add_argument(*opt.flags, default=None, type=opt.type)
+
+
         if not isinstance(args, tuple):
             args = args.parse_args()
 
-        if args.device is not None:
-            os.environ["CUDA_VISIBLE_DEVICES"] = args.device
         if args.resume is not None:
             resume = Path(args.resume)
             cfg_fname = resume.parent / 'config.json'
@@ -75,6 +80,10 @@ class ConfigParser:
 
         # parse custom cli options into dictionary
         modification = {opt.target : getattr(args, _get_opt_name(opt.flags)) for opt in options}
+        if args.device is not None:
+            config["gpu_id"] = args.device
+        if args.result_path is not None:
+            config["result_path"] = args.result_path
         return cls(config, resume, modification)
 
     def init_obj(self, name, module, *args, **kwargs):
@@ -155,3 +164,13 @@ def _set_by_path(tree, keys, value):
 def _get_by_path(tree, keys):
     """Access a nested object in tree by sequence of keys."""
     return reduce(getitem, keys, tree)
+
+def str2bool(v): 
+    if isinstance(v, bool): 
+        return v 
+    if v.lower() in ('yes', 'true', 't', 'y', '1'): 
+        return True 
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'): 
+        return False 
+    else: 
+        raise argparse.ArgumentTypeError('Boolean value expected.')

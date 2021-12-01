@@ -1,60 +1,69 @@
 {
     "name": "ProjectivePose",
-    "n_gpu": 1,
+    "gpu_id": "0",
     "arch": {
         "type": "ProjectivePose",
         "args": {
-            "img_ratio": 0.5
+            "img_ratio": 0.5,
+            "input_size": 128,
+            "ftr_size": 128,
+            "start_level": 2,
+            "end_level": 0,
+            "model_name": "res34",
+            "occlusion": true,
+            "N_z": 100
         }
     },
     "data_loader": {
         "type": "DataLoader",
         "args":{
-            "data_dir": "../Dataset/LINEMOD",
-            "batch_size": 2,
+            "data_dir": "../Dataset/OCCLUSION",
+            "batch_size":4,
             "obj_list" : [5],
+            "reference_N": 8,
+            "is_pbr": true,
             "img_ratio" : 0.5,
             "shuffle": true,
             "validation_split": 0.1,
-            "num_workers": 2
+            "num_workers": 2,
+            "FPS": true
         }
     },
     "mesh_loader": {
         "type": "MeshesLoader",
         "args":{
-            "mesh_dir": "../Dataset/LINEMOD/models",
+            "mesh_dir": "../Dataset/OCCLUSION/models",
             "obj_list" : [5],
-            "size" : 128
+            "render_size" : 128
         }
     },
     "optimizer": {
         "type": "Adam",
         "args":{
             "lr": 0.0001,
-            "weight_decay": 0,
-            "amsgrad": true
+            "weight_decay": 0
         }
     },
-    "loss": "nll_loss",
+    "loss": "grid_distance_loss",
     "metrics": [
-        "accuracy", "top_k_acc"
+        "ADD_score"
     ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
-            "step_size": 50,
+            "step_size": 2000,
             "gamma": 0.1
         }
     },
     "trainer": {
-        "epochs": 10000,
+        "epochs": 3000,
 
         "save_dir": "saved/",
-        "save_period": 1,
+        "save_period": 100,
         "verbosity": 2,
         
         "monitor": "min val_loss",
-        "early_stop": 10,
+        "early_stop": 1000,
 
         "tensorboard": true
     }

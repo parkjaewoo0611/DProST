@@ -79,7 +79,7 @@ class Renderer():
         phong = (((phong  - phong.min()) / phong.max()) - 0.5) * 2
 
         phong = phong.permute(0, 3, 1, 2)[:, :3, ...]
-        phong = F.interpolate(phong, (self.H_crop, self.W_crop))
+        phong = F.interpolate(phong, (self.H_crop, self.W_crop), mode='bilinear', align_corners=True)
 
         return phong
 

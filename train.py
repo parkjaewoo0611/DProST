@@ -13,7 +13,7 @@ import model.model as module_arch
 from parse_config import ConfigParser
 from trainer import Trainer
 from utils import prepare_device
-
+import os
 
 # fix random seeds for reproducibility
 SEED = 123
@@ -23,6 +23,11 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 def main(config):
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
+    # prepare for (multi-device) GPU training
+    device, device_ids = prepare_device(config['gpu_id'])
+    
     logger = config.get_logger('train')
 
     # setup data_loader instances
@@ -35,9 +40,6 @@ def main(config):
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
     logger.info(model)
-
-    # prepare for (multi-device) GPU training
-    device, device_ids = prepare_device(config['n_gpu'])
     model = model.to(device)
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)
@@ -70,12 +72,20 @@ if __name__ == '__main__':
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default=None, type=str,
                       help='indices of GPUs to enable (default: all)')
-
+    args.add_argument('--result_path', default=None, type=str,
+                      help='result saved path')
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
-        CustomArgs(['--lr', '--learning_rate'], type=float, target='optimizer;args;lr'),
-        CustomArgs(['--bs', '--batch_size'], type=int, target='data_loader;args;batch_size')
+        CustomArgs(['--reference_N'], type=int, target='data_loader;args;reference_N'),
+        CustomArgs(['--N_z'], type=int, target='arch;args;N_z'),
+        CustomArgs(['--occlusion'], type=bool, target='arch;args;occlusion'),
+        CustomArgs(['--is_pbr'], type=bool, target='data_loader;args;is_pbr'),
+        CustomArgs(['--data_dir'], type=str, target='data_loader;args;data_dir'),
+        CustomArgs(['--mesh_dir'], type=str, target='mesh_loader;args;mesh_dir'),
+        CustomArgs(['--data_obj_list'], type=list, target='data_loader;args;obj_list'),
+        CustomArgs(['--mesh_obj_list'], type=list, target='mesh_loader;args;obj_list'),
+        CustomArgs(['--loss'], type=str, target='loss'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

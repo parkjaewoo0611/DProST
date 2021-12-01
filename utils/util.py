@@ -4,6 +4,8 @@ import pandas as pd
 from pathlib import Path
 from itertools import repeat
 from collections import OrderedDict
+import torch.nn.functional as F
+
 
 def ensure_dir(dirname):
     dirname = Path(dirname)
@@ -25,10 +27,14 @@ def inf_loop(data_loader):
     for loader in repeat(data_loader):
         yield from loader
 
-def prepare_device(n_gpu_use):
+def prepare_device(gpu_id):
     """
     setup GPU device if available. get gpu device indices which are used for DataParallel
     """
+
+    gpu_list = [int(gpu) for gpu in gpu_id.split(",")]
+    
+    n_gpu_use = len(gpu_list)
     n_gpu = torch.cuda.device_count()
     if n_gpu_use > 0 and n_gpu == 0:
         print("Warning: There\'s no GPU available on this machine,"
@@ -38,9 +44,10 @@ def prepare_device(n_gpu_use):
         print(f"Warning: The number of GPU\'s configured to use is {n_gpu_use}, but only {n_gpu} are "
               "available on this machine.")
         n_gpu_use = n_gpu
-    device = torch.device('cuda:0' if n_gpu_use > 0 else 'cpu')
-    list_ids = list(range(n_gpu_use))
-    return device, list_ids
+
+    device = torch.device(f'cuda:0' if n_gpu_use > 0 else 'cpu')
+    
+    return device, gpu_list
 
 class MetricTracker:
     def __init__(self, *keys, writer=None):
@@ -71,7 +78,10 @@ import torchvision
 import numpy as np
 import matplotlib.pyplot as plt
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
-from pytorch3d.transforms.transform3d import Transform3d
+from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle
+from torchvision.ops import roi_align
+import cv2
+from PIL import Image
 
 def TCO_symmetry(TCO_label, mesh_info_batch, continuous_symmetry_N=8):
     bsz = TCO_label.shape[0]
@@ -137,6 +147,7 @@ def TCO_to_vxvyvz(TCO_in, TCO_gt, K):
     return vxvyvz
 
 def bbox_add_noise(bbox, std_rate=0.2):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
     """
     bbox : batch_size x 4
     noisy_bbox : batch_size x 4
@@ -146,6 +157,27 @@ def bbox_add_noise(bbox, std_rate=0.2):
     bbox_std = torch.cat((bbox_size * std_rate, bbox_size * std_rate), 1)
     noisy_bbox = torch.normal(bbox, bbox_std).to(device)
     return noisy_bbox
+
+def add_noise(TCO, euler_deg_std=[15, 15, 15], trans_std=[0.01, 0.01, 0.05]):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
+    TCO_out = TCO.clone()
+    device = TCO_out.device
+    bsz = TCO.shape[0]
+    euler_noise_deg = np.concatenate(
+        [np.random.normal(loc=0, scale=euler_deg_std_i, size=bsz)[:, None]
+         for euler_deg_std_i in euler_deg_std], axis=1)
+    #euler_noise_deg = np.ones_like(euler_noise_deg) * 10
+    euler_noise_rad = torch.tensor(euler_noise_deg) * np.pi / 180
+    R_noise = euler_angles_to_matrix(euler_noise_rad, 'XYZ').float().to(device)
+    
+    trans_noise = np.concatenate(
+        [np.random.normal(loc=0, scale=trans_std_i, size=bsz)[:, None]
+         for trans_std_i in trans_std], axis=1)
+    trans_noise = torch.tensor(trans_noise).float().to(device)
+    TCO_out[:, :3, :3] = R_noise @ TCO_out[:, :3, :3]
+    TCO_out[:, :3, 3] += trans_noise
+    return TCO_out
+
 
 def RT_from_boxes(boxes_2d, K):
     # User in BOP20 challenge
@@ -210,7 +242,9 @@ def imshow(img_list):
     plt.savefig('img_check.png')
     plt.cla() 
 
-def get_K_crop_resize(K, boxes, orig_size, crop_resize):
+
+
+def get_K_crop_resize(K, boxes, crop_resize):
     """
     Adapted from https://github.com/BerkeleyAutomation/perception/blob/master/perception/camera_intrinsics.py
     Skew is not handled !
@@ -220,7 +254,7 @@ def get_K_crop_resize(K, boxes, orig_size, crop_resize):
     K = K.float()
     boxes = boxes.float()
     new_K = K.clone()
-    orig_size = torch.tensor(orig_size, dtype=torch.float)
+
     crop_resize = torch.tensor(crop_resize, dtype=torch.float)
     final_width, final_height = crop_resize[1], crop_resize[0]
     crop_width = boxes[:, 2] - boxes[:, 0]
@@ -250,23 +284,19 @@ def get_K_crop_resize(K, boxes, orig_size, crop_resize):
     return new_K
 
 
-def crop_inputs(grids, coeffi, K, TCO, obs_boxes, output_size, points):
+def crop_inputs(grids, coeffi, K, obs_boxes, output_size, lamb=1.1):
     boxes_crop, grid_cropped, coeffi_cropped = deepim_crops(grids=grids,
                                                             coefficients=coeffi,
                                                             obs_boxes=obs_boxes,
-                                                            K=K,
-                                                            TCO_pred=TCO,
-                                                            O_vertices=points,
                                                             output_size=output_size,
-                                                            lamb=1.1)
+                                                            lamb=lamb)
     K_crop = get_K_crop_resize(K=K.clone(),
                                boxes=boxes_crop,
-                               orig_size=[grids.shape[2], grids.shape[3]],
                                crop_resize=output_size)
     return grid_cropped, coeffi_cropped, K_crop.detach(), boxes_crop
 
 
-def deepim_crops(grids, coefficients, obs_boxes, K, TCO_pred, O_vertices, output_size=None, lamb=1.4):
+def deepim_crops(grids, coefficients, obs_boxes, output_size=None, lamb=1.4):
     batch_size, _, h, w, _ = grids.shape
     device = grids.device
     if output_size is None:
@@ -383,6 +413,117 @@ def apply_imagespace_predictions(TCO, K, vxvyvz, dRCO):
     return TCO_out
 
 
+def z_buffer_max(ftr, mask):
+    z_grid = torch.arange(ftr.shape[2]).unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[3], ftr.shape[4]).to(ftr.device)
+    index = mask.squeeze(1) * z_grid.unsqueeze(0)
+    index = torch.max(index, 1).indices
+    img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
+    return img, index
+
+
+def z_buffer_min(ftr, mask):
+    z_grid = (ftr.shape[2] - 1) - torch.arange(ftr.shape[2]).unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[3], ftr.shape[4]).to(ftr.device)
+    index = mask.squeeze(1) * z_grid.unsqueeze(0)
+    index = torch.max(index, 1).indices
+    img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
+    return img, index
+
+
+def ProST_grid(H, W, f, cx, cy, rc_pts):
+    meshgrid = torch.meshgrid(torch.range(0, H-1), torch.range(0, W-1))
+    X = (cx - meshgrid[1])
+    Y = (cy - meshgrid[0])
+    Z = torch.ones_like(X) * f
+    XYZ = torch.cat((X.unsqueeze(2), Y.unsqueeze(2), Z.unsqueeze(2)), -1)
+    L = torch.norm(XYZ, dim=-1)
+
+    dist_min = -1
+    dist_max = 1
+    step_size = (dist_max - dist_min) / rc_pts
+    steps = torch.arange(dist_min, dist_max - step_size/2, step_size)
+    normalized_XYZ = XYZ.unsqueeze(0).repeat(rc_pts, 1, 1, 1) / L.unsqueeze(0).unsqueeze(3).repeat(rc_pts, 1, 1, 1)
+    ProST_grid = steps.unsqueeze(1).unsqueeze(2).unsqueeze(3) * normalized_XYZ
+
+    return ProST_grid.unsqueeze(0), normalized_XYZ.unsqueeze(0)
+
+def grid_sampler(ftr, ftr_mask, grid):
+    ###### Grid Sampler
+    ftr = torch.flip(ftr, [2, 3, 4])
+    ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
+    pr_ftr = F.grid_sample(ftr, grid, mode='bilinear', align_corners=True)
+    pr_ftr_mask = F.grid_sample(ftr_mask, grid, mode='bilinear', align_corners=True)
+    return pr_ftr, pr_ftr_mask
+
+# for change RT to pytorch3d style
+R_comp = torch.eye(4, 4)[None]
+R_comp[0, 0, 0] = -1
+R_comp[0, 1, 1] = -1
+R_comp.requires_grad = True
+def grid_transformer(grid, RT):
+    ###### Projective Grid Generator
+    grid_shape = grid.shape
+    grid = grid.flatten(1, 3)            
+    RT = torch.bmm(R_comp.repeat(RT.shape[0], 1, 1).to(RT.device), RT)
+    RT_inv = invert_T(RT)
+    transformed_grid = transform_pts(RT_inv, grid).reshape(grid_shape)
+
+    return transformed_grid
+
+
+def transform_pts(T, pts):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
+    bsz = T.shape[0]
+    n_pts = pts.shape[1]
+    assert pts.shape == (bsz, n_pts, 3)
+    if T.dim() == 4:
+        pts = pts.unsqueeze(1)
+        assert T.shape[-2:] == (4, 4)
+    elif T.dim() == 3:
+        assert T.shape == (bsz, 4, 4)
+    else:
+        raise ValueError('Unsupported shape for T', T.shape)
+    pts = pts.unsqueeze(-1)
+    T = T.unsqueeze(-3)
+    pts_transformed = T[..., :3, :3] @ pts + T[..., :3, [-1]]
+    return pts_transformed.squeeze(-1)
+
+def invert_T(T):
+    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
+    R = T[..., :3, :3]
+    t = T[..., :3, [-1]]
+    R_inv = R.transpose(-2, -1)
+    t_inv = - R_inv @ t
+    T_inv = T.clone()
+    T_inv[..., :3, :3] = R_inv
+    T_inv[..., :3, [-1]] = t_inv
+    return T_inv
+
+def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
+    bboxes_img_feature = bboxes_crop * (torch.tensor(img_feature.shape[-2:])/torch.tensor(original_size)).unsqueeze(0).repeat(1, 2).to(bboxes_crop.device)
+    idx = torch.arange(bboxes_img_feature.shape[0]).to(torch.float).unsqueeze(1).to(bboxes_img_feature.device)
+    bboxes_img_feature = torch.cat([idx, bboxes_img_feature], 1).to(torch.float) # bboxes_img_feature.shape --> [N, 5] and first column is index of batch for region
+    roi_feature = roi_align(img_feature, bboxes_img_feature, output_size=output_size, sampling_ratio=4)
+    return roi_feature
+
+def proj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
+    ####### Dynamic Projective STN
+    pr_grid_proj, obj_dist = dynamic_projective_stn(RT, grid_crop, coeffi_crop)
+    ####### sample ftr to 2D
+    pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
+    ###### z-buffering
+    pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
+    return pr_proj
+
+
+def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
+    ###### grid distance change
+    obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
+    grid_proj_origin = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
+    ###### Projective Grid Generator
+    pr_grid_proj = grid_transformer(grid_proj_origin, RT)
+    return pr_grid_proj, obj_dist
+
+
 def image_mean_std_check(dataloader):
     mean = torch.zeros(3)
     meansq = torch.zeros(3)
@@ -399,6 +540,118 @@ def image_mean_std_check(dataloader):
     print("mean: " + str(total_mean))
     print("std: " + str(total_std))
     return total_mean, total_std
+
+
+def contour_visualize_2(render, label, img, color=(0, 255, 0), only_label=False):
+    render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
+    render = ((render - np.min(render))/(np.max(render) - np.min(render)) * 255).astype(np.uint8)
+    label = cv2.cvtColor(label, cv2.COLOR_RGB2GRAY)
+    label = ((label - np.min(label))/(np.max(label) - np.min(label)) * 255).astype(np.uint8)
+    img = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    _, thr_image_render = cv2.threshold(render, 10, 255, 0)
+    _, thr_image_label = cv2.threshold(label, 10, 255, 0)
+    contours_render, hierarchy = cv2.findContours(thr_image_render, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours_label, hierarchy = cv2.findContours(thr_image_label, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if only_label:
+        result = cv2.drawContours(img, contours_label, -1, (0, 255, 0), 2)
+    else:
+        result = cv2.drawContours(img, contours_label, -1, (0, 255, 0), 2)
+        result = cv2.drawContours(result, contours_render, -1, (0, 0, 255), 2)
+    return result
+
+
+def farthest_rotation_sampling(dataset, N):
+    references = []
+    farthest_idx = np.zeros(N)
+    farthest_Rs = np.zeros([N, 3, 3])
+    Rs = torch.tensor(np.stack([target['RT'][:3, :3] for i, (batch, target) in enumerate(dataset)]))
+    mask_pixel_N = [np.array(Image.open(data[1]['mask'])).sum() for data in dataset]
+    farthest_idx[0] = np.array(mask_pixel_N).argmax()
+    farthest_Rs[0] = Rs[int(farthest_idx[0])]
+    distances = so3_relative_angle(torch.tensor(farthest_Rs[0]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs)
+    for i in range(1, N):
+        farthest_idx[i] = torch.argmax(distances)
+        farthest_Rs[i] = Rs[int(farthest_idx[i])]
+        distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_Rs[i]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs))
+
+    for idx in list(farthest_idx.astype(int)):
+        references.append(dataset[idx])
+    return references
+
+def orthographic_pool(grids, mask, feature, ftr_size):
+    f_mask, t_mask, r_mask = mask
+    f_feature, t_feature, r_feature = feature
+    grid_f, grid_t, grid_r = grids
+    bsz = f_feature.shape[0]
+
+    grid_f = grid_f.clone().to(f_feature.device).repeat(bsz, 1, 1, 1, 1)
+    grid_t = grid_t.clone().to(t_feature.device).repeat(bsz, 1, 1, 1, 1)
+    grid_r = grid_r.clone().to(r_feature.device).repeat(bsz, 1, 1, 1, 1)
+
+    ## 3d mask
+    f_mask_3d = F.interpolate(f_mask, (ftr_size, ftr_size))  
+    t_mask_3d = F.interpolate(t_mask, (ftr_size, ftr_size))  
+    r_mask_3d = F.interpolate(r_mask, (ftr_size, ftr_size))  
+
+    f_mask_3d = f_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
+    t_mask_3d = t_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+    r_mask_3d = r_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+
+    f_mask_3d = F.grid_sample(f_mask_3d, grid_f)
+    t_mask_3d = F.grid_sample(t_mask_3d, grid_t)
+    r_mask_3d = F.grid_sample(r_mask_3d, grid_r)
+    ftr_mask_3d = f_mask_3d * t_mask_3d * r_mask_3d
+
+    ## 3d image
+    f_3d = F.interpolate(f_feature, (ftr_size, ftr_size))  
+    t_3d = F.interpolate(t_feature, (ftr_size, ftr_size))  
+    r_3d = F.interpolate(r_feature, (ftr_size, ftr_size))  
+
+    f_3d = f_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
+    t_3d = t_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+    r_3d = r_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
+
+    f_3d = F.grid_sample(f_3d, grid_f)
+    t_3d = F.grid_sample(t_3d, grid_t)
+    r_3d = F.grid_sample(r_3d, grid_r)
+
+    ftr_3d = (f_3d + t_3d + r_3d) / 3   
+    ftr_3d = ftr_3d * ftr_mask_3d
+    return ftr_3d, ftr_mask_3d
+
+def projective_pool(grid_p, masks, features, RT, K_crop, ftr_size):
+    bsz = features.shape[0]
+
+    index_3d = torch.zeros([ftr_size, ftr_size, ftr_size, 3])
+    idx = torch.arange(0, ftr_size)
+    index_3d[..., 0], index_3d[..., 1], index_3d[..., 2] = torch.meshgrid(idx, idx, idx)
+    normalized_idx = (index_3d - ftr_size/2)/(ftr_size/2)
+    X = normalized_idx.reshape(1, -1, 3).repeat(bsz, 1, 1)
+
+    homogeneous_X = torch.cat((X, torch.ones(X.shape[0], X.shape[1], 1)), 2).transpose(1, 2).to(RT.device)
+    xyz_KRT = torch.bmm(K_crop, torch.bmm(RT[:, :3, :], homogeneous_X))
+    xyz = (xyz_KRT/xyz_KRT[:, [2], :]).transpose(1, 2).reshape(bsz, ftr_size, ftr_size, ftr_size, 3)
+    xyz[..., :2] = (xyz[..., :2] - ftr_size/2)/(ftr_size/2)
+    xyz[... ,2] = 0
+    
+    features_3d = features.unsqueeze(2)
+    masks_3d = masks.unsqueeze(2)
+
+    ftr_mask_3d = F.grid_sample(masks_3d, xyz)
+    ftr_3d = F.grid_sample(features_3d, xyz)
+
+    ftr_mask_3d = torch.prod(ftr_mask_3d, 0, keepdim=True)
+    ftr_3d = ftr_3d.sum(0, keepdim=True)
+
+    ftr_3d = ftr_3d * ftr_mask_3d
+
+    grid_p = grid_p.clone()
+    ftr_mask_3d = F.grid_sample(ftr_mask_3d, grid_p)
+    ftr_3d = F.grid_sample(ftr_3d, grid_p)
+            
+    return ftr_3d, ftr_mask_3d
 
 LM_idx2class = {
     1: "ape",
@@ -454,6 +707,55 @@ LM_idx2symmetry = {
     15 : 'none',
 }
 
+LM_idx2syms= {
+    1 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    2 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    #3 : 'sym_con',
+    4 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    5 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    6 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    #7 : 'none',
+    8 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    9 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    10 : [{"R": np.array([[-0.999964, -0.00333777, -0.0077452], 
+                         [0.00321462, -0.999869, 0.0158593  ],
+                         [-0.00779712, 0.0158338, 0.999844 ]]),
+          "t": np.array([[0.232611], [0.694388], [-0.0792063]])
+    }],
+    11 : [{"R": np.array([[-0.999633, 0.026679, 0.00479336], 
+                         [-0.0266744, -0.999644, 0.00100504  ],
+                         [0.00481847, 0.000876815, 0.999988 ]]),
+          "t": np.array([[-0.262139], [-0.197966], [0.0321652]])
+    }],
+    12 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    13 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    14 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    15 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+}
+
+
 LM_idx2diameter = {
     1 : 102.099,
     2 : 247.506,
@@ -493,6 +795,9 @@ FY = 573.57043
 PX = 325.2611
 PY = 242.04899
 
+K = np.array([[FX,  0, PX],
+              [ 0, FY, PY],
+              [ 0,  0,  1]])
 
 UNIT_CUBE_VERTEX = torch.tensor(
     [[1, 1, 1],
@@ -505,3 +810,4 @@ UNIT_CUBE_VERTEX = torch.tensor(
      [-1, -1, -1]]
      , dtype=torch.float
 )
+
