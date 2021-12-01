@@ -42,7 +42,6 @@ class DataLoader(BaseDataLoader):
                 self.dataset = pickle.load(f)
 
         self.dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset) if batch['obj_id'] in self.obj_list]
-        # self.dataset = self.dataset[0:4]
         
         self.obj_dataset = {}
         for obj in self.obj_list:

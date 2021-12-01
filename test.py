@@ -14,7 +14,7 @@ import model.loss as module_loss
 import model.metric as module_metric
 import model.model as module_arch
 from parse_config import ConfigParser
-from utils import proj_visualize, contour_visualize
+from utils import proj_visualize
 import matplotlib.pyplot as plt
 import numpy as np
 import warnings
@@ -31,7 +31,8 @@ def main(config, start_level, end_level):
     # setup data_loader instances
     data_loader = getattr(module_data, config['data_loader']['type'])(
         config['data_loader']['args']['data_dir'],
-        batch_size=2,
+        batch_size=1,
+        reference_N=config['data_loader']['args']['reference_N'],
         obj_list=config['data_loader']['args']['obj_list'],
         img_ratio=config['data_loader']['args']['img_ratio'],
         shuffle=False,
@@ -48,7 +49,9 @@ def main(config, start_level, end_level):
 
     # get function handles of loss and metrics
     loss_fn = getattr(module_loss, config['loss'])
-    metric_fns = [getattr(module_metric, met) for met in config['metrics']]
+    # metric_fns = [getattr(module_metric, met) for met in config['metrics']]
+    metrics = ['ADD_score_02', 'ADD_score_05', 'ADD_score_10', 'proj_score_2', 'proj_score_5', 'proj_score_10']
+    metric_fns = [getattr(module_metric, met) for met in metrics]
 
     logger.info('Loading checkpoint: {} ...'.format(config.resume))
     checkpoint = torch.load(config.resume)
@@ -101,7 +104,7 @@ def main(config, start_level, end_level):
             for i, metric in enumerate(metric_fns):
                 total_metrics[i] += metric(prediction[list(prediction.keys())[-1]], RTs, meshes, obj_ids) * batch_size
 
-            ##### visualize images
+            #### visualize images
             # img = make_grid(P['roi_feature'].detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             # img_vis = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
             
@@ -133,20 +136,20 @@ def main(config, start_level, end_level):
     n_samples = len(data_loader.sampler)
     log = {'loss': total_loss / n_samples}
     log.update({
-        met.__name__: total_metrics[i].item() / n_samples for i, met in enumerate(metric_fns)
+        met.__name__: round(total_metrics[i].item() / n_samples * 100, 1) for i, met in enumerate(metric_fns)
     })
     logger.info(log)
 
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default='saved/models/8reference-res50-true.occlusion-1300epoch/5/config.json', type=str,
+    args.add_argument('-c', '--config', default='saved/models/LINEMOD_3000/1/config.json', type=str,
                       help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default='saved/models/8reference-res50-true.occlusion-1300epoch/5/checkpoint-epoch1300.pth', type=str,
+    args.add_argument('-r', '--resume', default='saved/models/LINEMOD_3000/1/checkpoint-epoch3000.pth', type=str,
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default='0', type=str,
                       help='indices of GPUs to enable (default: all)')
-    args.add_argument('--result_path', default='saved/results/8reference-res50-true.occlusion-1300epoch/5', type=str,
+    args.add_argument('--result_path', default='saved/results/LINEMOD_3000/1', type=str,
                       help='result saved path')
     args.add_argument('-s', '--start_level', default=2, type=int,
                       help='start level')

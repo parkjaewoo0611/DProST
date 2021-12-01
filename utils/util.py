@@ -284,12 +284,12 @@ def get_K_crop_resize(K, boxes, crop_resize):
     return new_K
 
 
-def crop_inputs(grids, coeffi, K, obs_boxes, output_size):
+def crop_inputs(grids, coeffi, K, obs_boxes, output_size, lamb=1.1):
     boxes_crop, grid_cropped, coeffi_cropped = deepim_crops(grids=grids,
                                                             coefficients=coeffi,
                                                             obs_boxes=obs_boxes,
                                                             output_size=output_size,
-                                                            lamb=1.1)
+                                                            lamb=lamb)
     K_crop = get_K_crop_resize(K=K.clone(),
                                boxes=boxes_crop,
                                crop_resize=output_size)
@@ -542,15 +542,23 @@ def image_mean_std_check(dataloader):
     return total_mean, total_std
 
 
-def contour_visualize(render, img, color=(0, 255, 0)):
+def contour_visualize_2(render, label, img, color=(0, 255, 0), only_label=False):
     render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
     render = ((render - np.min(render))/(np.max(render) - np.min(render)) * 255).astype(np.uint8)
+    label = cv2.cvtColor(label, cv2.COLOR_RGB2GRAY)
+    label = ((label - np.min(label))/(np.max(label) - np.min(label)) * 255).astype(np.uint8)
     img = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    _, thr_image = cv2.threshold(render, 10, 255, 0)
-    contours, hierarchy = cv2.findContours(thr_image, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    result = cv2.drawContours(img, contours, -1, color, 3)
+    _, thr_image_render = cv2.threshold(render, 10, 255, 0)
+    _, thr_image_label = cv2.threshold(label, 10, 255, 0)
+    contours_render, hierarchy = cv2.findContours(thr_image_render, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours_label, hierarchy = cv2.findContours(thr_image_label, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if only_label:
+        result = cv2.drawContours(img, contours_label, -1, (0, 255, 0), 2)
+    else:
+        result = cv2.drawContours(img, contours_label, -1, (0, 255, 0), 2)
+        result = cv2.drawContours(result, contours_render, -1, (0, 0, 255), 2)
     return result
 
 
@@ -699,6 +707,55 @@ LM_idx2symmetry = {
     15 : 'none',
 }
 
+LM_idx2syms= {
+    1 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    2 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    #3 : 'sym_con',
+    4 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    5 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    6 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    #7 : 'none',
+    8 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    9 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    10 : [{"R": np.array([[-0.999964, -0.00333777, -0.0077452], 
+                         [0.00321462, -0.999869, 0.0158593  ],
+                         [-0.00779712, 0.0158338, 0.999844 ]]),
+          "t": np.array([[0.232611], [0.694388], [-0.0792063]])
+    }],
+    11 : [{"R": np.array([[-0.999633, 0.026679, 0.00479336], 
+                         [-0.0266744, -0.999644, 0.00100504  ],
+                         [0.00481847, 0.000876815, 0.999988 ]]),
+          "t": np.array([[-0.262139], [-0.197966], [0.0321652]])
+    }],
+    12 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    13 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    14 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+    15 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
+}
+
+
 LM_idx2diameter = {
     1 : 102.099,
     2 : 247.506,
@@ -738,6 +795,9 @@ FY = 573.57043
 PX = 325.2611
 PY = 242.04899
 
+K = np.array([[FX,  0, PX],
+              [ 0, FY, PY],
+              [ 0,  0,  1]])
 
 UNIT_CUBE_VERTEX = torch.tensor(
     [[1, 1, 1],

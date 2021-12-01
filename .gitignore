@@ -4,7 +4,7 @@ result_lm.sh
 *.png
 visualize.py
 result*
-
+*.zip
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
