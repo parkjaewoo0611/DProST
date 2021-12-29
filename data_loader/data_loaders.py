@@ -61,12 +61,12 @@ class DataLoader(BaseDataLoader):
             else:
                 ref = random.sample(obj_dataset, self.reference_N)
             images, masks, _, bboxes, RTs = self.collate_fn(ref, True)
-        references[obj_id] = {
-            'images': images,
-            'masks': masks,
-            'bboxes': bboxes,
-            'RTs': RTs
-        }
+            references[obj_id] = {
+                'images': images,
+                'masks': masks,
+                'bboxes': bboxes,
+                'RTs': RTs
+            }
         return references
 
 

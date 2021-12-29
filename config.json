@@ -18,7 +18,7 @@
         "type": "DataLoader",
         "args":{
             "data_dir": "../Dataset/OCCLUSION",
-            "batch_size":4,
+            "batch_size":1,
             "obj_list" : [5],
             "reference_N": 8,
             "is_pbr": true,
@@ -46,7 +46,12 @@
     },
     "loss": "grid_distance_loss",
     "metrics": [
-        "ADD_score"
+        "ADD_score_02",
+        "ADD_score_05",
+        "ADD_score_10",
+        "proj_score_02",
+        "proj_score_05",
+        "proj_score_10"
     ],
     "lr_scheduler": {
         "type": "StepLR",

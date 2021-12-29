@@ -1,4 +1,5 @@
 #!/bin/bash
+conda update -n base -c defaults conda -y
 conda create --name ProjectivePose python=3.7.0 -y
 source activate ProjectivePose
 conda install pytorch==1.7.0 torchvision==0.8.1 torchaudio==0.7.0 cudatoolkit=11.0 -c pytorch -y

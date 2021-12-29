@@ -447,9 +447,7 @@ def ProST_grid(H, W, f, cx, cy, rc_pts):
     return ProST_grid.unsqueeze(0), normalized_XYZ.unsqueeze(0)
 
 def grid_sampler(ftr, ftr_mask, grid):
-    ###### Grid Sampler
-    ftr = torch.flip(ftr, [2, 3, 4])
-    ftr_mask = torch.flip(ftr_mask, [2, 3, 4])    
+    ###### Grid Sampler  
     pr_ftr = F.grid_sample(ftr, grid, mode='bilinear', align_corners=True)
     pr_ftr_mask = F.grid_sample(ftr_mask, grid, mode='bilinear', align_corners=True)
     return pr_ftr, pr_ftr_mask
@@ -621,18 +619,18 @@ def orthographic_pool(grids, mask, feature, ftr_size):
     ftr_3d = ftr_3d * ftr_mask_3d
     return ftr_3d, ftr_mask_3d
 
-def projective_pool(grid_p, masks, features, RT, K_crop, ftr_size):
-    bsz = features.shape[0]
+def projective_pool(masks, features, RT, K_crop, ftr_size):
+    N_ref = features.shape[0]
 
     index_3d = torch.zeros([ftr_size, ftr_size, ftr_size, 3])
     idx = torch.arange(0, ftr_size)
     index_3d[..., 0], index_3d[..., 1], index_3d[..., 2] = torch.meshgrid(idx, idx, idx)
     normalized_idx = (index_3d - ftr_size/2)/(ftr_size/2)
-    X = normalized_idx.reshape(1, -1, 3).repeat(bsz, 1, 1)
+    X = normalized_idx.reshape(1, -1, 3).repeat(N_ref, 1, 1)
 
     homogeneous_X = torch.cat((X, torch.ones(X.shape[0], X.shape[1], 1)), 2).transpose(1, 2).to(RT.device)
     xyz_KRT = torch.bmm(K_crop, torch.bmm(RT[:, :3, :], homogeneous_X))
-    xyz = (xyz_KRT/xyz_KRT[:, [2], :]).transpose(1, 2).reshape(bsz, ftr_size, ftr_size, ftr_size, 3)
+    xyz = (xyz_KRT/xyz_KRT[:, [2], :]).transpose(1, 2).reshape(N_ref, ftr_size, ftr_size, ftr_size, 3)
     xyz[..., :2] = (xyz[..., :2] - ftr_size/2)/(ftr_size/2)
     xyz[... ,2] = 0
     
@@ -647,10 +645,8 @@ def projective_pool(grid_p, masks, features, RT, K_crop, ftr_size):
 
     ftr_3d = ftr_3d * ftr_mask_3d
 
-    grid_p = grid_p.clone()
-    ftr_mask_3d = F.grid_sample(ftr_mask_3d, grid_p)
-    ftr_3d = F.grid_sample(ftr_3d, grid_p)
-            
+    ftr_mask_3d = ftr_mask_3d.transpose(2, 4)          # XYZ to ZYX (DHW)
+    ftr_3d = ftr_3d.transpose(2, 4)                    # XYZ to ZYX (DHW)
     return ftr_3d, ftr_mask_3d
 
 LM_idx2class = {

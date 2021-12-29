@@ -95,7 +95,7 @@ def t_score(prediction, RTs, meshes, ids):
     t_dist = np.array(list(t_dist)).mean()
     return t_dist
 
-def proj_score_2(prediction, RTs, meshes, ids):
+def proj_score_02(prediction, RTs, meshes, ids):
     TCO_output = prediction.clone()
     TCO_label = RTs.clone()
     points = meshes.clone().verts_list()
@@ -121,7 +121,7 @@ def proj_score_2(prediction, RTs, meshes, ids):
     return sum(proj_dist)/len(proj_dist)
 
 
-def proj_score_5(prediction, RTs, meshes, ids):
+def proj_score_05(prediction, RTs, meshes, ids):
     TCO_output = prediction.clone()
     TCO_label = RTs.clone()
     points = meshes.clone().verts_list()
