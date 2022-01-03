@@ -11,10 +11,10 @@ from pytorch3d.transforms import (
 )
 from base import BaseModel
 from utils.util import (
-    apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, bbox_add_noise, invert_T, orthographic_pool, proj_visualize, projective_pool, dynamic_projective_stn,
-    FX, FY, PX, PY, UNIT_CUBE_VERTEX, z_buffer_min, z_buffer_max, grid_sampler, grid_transformer, get_roi_feature, ProST_grid
+    apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, bbox_add_noise, projective_pool, dynamic_projective_stn,
+    z_buffer_min, z_buffer_max, grid_sampler, get_roi_feature, ProST_grid
 )
-
+from utils.LM_parameter import FX, FY, PX, PY
 class LocalizationNetwork(nn.Module):
     def __init__(self, model_name, occlusion):
         super().__init__()

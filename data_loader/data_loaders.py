@@ -5,7 +5,8 @@ import torch
 import numpy as np
 import pickle
 from base import BaseDataLoader
-from utils.util import LM_idx2radius, farthest_rotation_sampling
+from utils.util import farthest_rotation_sampling
+from utils.LM_parameter import LM_idx2radius
 import random
 import torch.utils.data.dataset
 
@@ -14,7 +15,7 @@ class DataLoader(BaseDataLoader):
     DataLoader for pickle data which has location of images to load 
     and etc labels
     """
-    def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=True, img_ratio=1.0, shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True):
+    def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=True, img_ratio=1.0, shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True, **kwargs):
         H = int(480 * img_ratio)
         W = int(640 * img_ratio)
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(size=(H, W))])
@@ -35,17 +36,17 @@ class DataLoader(BaseDataLoader):
             if self.is_pbr:
                 with open(os.path.join(data_dir, 'train_pbr.pickle'), 'rb') as f:
                     self.dataset_pbr = pickle.load(f)
-                self.dataset_pbr = [(batch, target) for i, (batch, target) in enumerate(self.dataset_pbr) if batch['obj_id'] in self.obj_list]
-                self.dataset_pbr = [(batch, target) for i, (batch, target) in enumerate(self.dataset_pbr) if target['visib_fract'] > 0.2]
+                self.dataset_pbr = [batch for i, batch in enumerate(self.dataset_pbr) if batch['obj_id'] in self.obj_list]
+                self.dataset_pbr = [batch for i, batch in enumerate(self.dataset_pbr) if batch['visib_fract'] > 0.2]
         else:
             with open(os.path.join(data_dir, 'test.pickle'), 'rb') as f:
                 self.dataset = pickle.load(f)
 
-        self.dataset = [(batch, target) for i, (batch, target) in enumerate(self.dataset) if batch['obj_id'] in self.obj_list]
+        self.dataset = [batch for i, batch in enumerate(self.dataset) if batch['obj_id'] in self.obj_list]
         
         self.obj_dataset = {}
         for obj in self.obj_list:
-            self.obj_dataset[obj] = [(batch, target) for i, (batch, target) in enumerate(self.dataset_train) if batch['obj_id'] is obj]
+            self.obj_dataset[obj] = [batch for i, batch in enumerate(self.dataset_train) if batch['obj_id'] is obj]
 
         #### self.dataset --> (batch, target) tuple
         super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=self.collate_fn)
@@ -60,7 +61,7 @@ class DataLoader(BaseDataLoader):
                 ref = farthest_rotation_sampling(obj_dataset, self.reference_N)
             else:
                 ref = random.sample(obj_dataset, self.reference_N)
-            images, masks, _, bboxes, RTs = self.collate_fn(ref, True)
+            images, masks, _, _, bboxes, RTs = self.collate_fn(ref, True)
             references[obj_id] = {
                 'images': images,
                 'masks': masks,
@@ -83,36 +84,40 @@ class DataLoader(BaseDataLoader):
         """  
         images = []
         masks = []
+        depths = []
         obj_ids = []
         bboxes = []
         RTs = []
-        for idx, (batch_sample, target_sample) in enumerate(data):
+        for idx, batch_sample in enumerate(data):
             images.append(self.transform(np.array(Image.open(batch_sample['image']))))
-            masks.append(self.transform(np.array(Image.open(target_sample['mask']))))
+            depths.append(torch.tensor(np.array(Image.open(batch_sample['depth'])) * batch_sample['depth_scale']))
+            masks.append(self.transform(np.array(Image.open(batch_sample['mask']))))
             obj_ids.append(torch.tensor(batch_sample['obj_id']))
             if self.training or reference:
-                bboxes.append(torch.tensor(target_sample['bbox_obj']) * self.img_ratio)
+                bboxes.append(torch.tensor(batch_sample['bbox_obj']) * self.img_ratio)
             else:
-                bboxes.append(torch.tensor(target_sample['bbox_faster']) * self.img_ratio)      # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
-            RT = torch.tensor(target_sample['RT'], dtype=torch.float)
+                bboxes.append(torch.tensor(batch_sample['bbox_faster']) * self.img_ratio)      # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
+            RT = torch.tensor(batch_sample['RT'], dtype=torch.float)
             RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
             RTs.append(RT)
 
         if self.is_pbr and self.training and not reference:
             data_pbr = random.sample(self.dataset_pbr, len(data))
-            for idx, (batch_sample, target_sample) in enumerate(data_pbr):
+            for idx, batch_sample in enumerate(data_pbr):
                 images.append(self.transform(np.array(Image.open(batch_sample['image']))))
-                masks.append(self.transform(np.array(Image.open(target_sample['mask']))))
+                depths.append(torch.tensor(np.array(Image.open(batch_sample['depth'])) * batch_sample['depth_scale']))
+                masks.append(self.transform(np.array(Image.open(batch_sample['mask']))))
                 obj_ids.append(torch.tensor(batch_sample['obj_id']))
-                bboxes.append(torch.tensor(target_sample['bbox_obj']) * self.img_ratio)
-                RT = torch.tensor(target_sample['RT'], dtype=torch.float)
+                bboxes.append(torch.tensor(batch_sample['bbox_obj']) * self.img_ratio)
+                RT = torch.tensor(batch_sample['RT'], dtype=torch.float)
                 RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
                 RTs.append(RT)
 
         images = torch.stack(images)
+        depths = torch.stack(depths)
         masks = torch.stack(masks)
         obj_ids = torch.stack(obj_ids)
         bboxes = torch.stack(bboxes)
         RTs = torch.stack(RTs)
-        return images, masks, obj_ids, bboxes, RTs
+        return images, masks, depths, obj_ids, bboxes, RTs
         

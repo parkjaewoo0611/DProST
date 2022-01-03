@@ -32,7 +32,12 @@ def main(config):
 
     # setup data_loader instances
     data_loader = config.init_obj('data_loader', module_data)
-    valid_data_loader = data_loader.split_validation()
+    if config['data_loader']['args']['test_as_valid']:
+        test_args = config['data_loader']['args'].copy()
+        test_args['shuffle'], test_args['training'] = False, False
+        valid_data_loader = getattr(module_data, config['data_loader']['type'])(**test_args)
+    else:
+        valid_data_loader = data_loader.split_validation()
 
     # mesh loader
     mesh_loader = config.init_obj('mesh_loader', module_mesh)

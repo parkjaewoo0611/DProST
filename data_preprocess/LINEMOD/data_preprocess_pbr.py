@@ -72,6 +72,7 @@ class Preprocessor():
 
     def load(self, scene_id, im_id, inst_id):
         img_name = self.load_image(scene_id, im_id)
+        depth_name = self.load_depth(scene_id, im_id)
         mask_name = self.load_mask(scene_id, im_id, inst_id)
         ratio = 1
         K = self.camera[scene_id][im_id]['K']
@@ -88,6 +89,7 @@ class Preprocessor():
                 'K' : K,
                 'bbox_obj' : bbox_obj,
                 'image' : img_name,
+                'depth' : depth_name,
                 'mask' : mask_name,
                 'depth_scale' : depth_scale,
                 'visib_fract' : visib_fract,
@@ -101,6 +103,12 @@ class Preprocessor():
         scene_id = "{0:0=6d}".format(scene_id)
         im_id = "{0:0=6d}".format(im_id)
         name = os.path.join(self.DATA_PATH, scene_id, 'rgb', im_id)+'.jpg'
+        return name
+
+    def load_depth(self, scene_id, im_id):
+        scene_id = "{0:0=6d}".format(scene_id)
+        im_id = "{0:0=6d}".format(im_id)
+        name = os.path.join(self.DATA_PATH, scene_id, 'depth', im_id)+'.png'
         return name
 
     def load_mask(self, scene_id, im_id, inst_id):

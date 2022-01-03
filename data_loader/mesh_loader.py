@@ -18,17 +18,18 @@ from pytorch3d.renderer import (
 from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.transforms import euler_angles_to_matrix
 
-from utils.util import LM_idx2radius
+from utils.LM_parameter import LM_idx2radius
 
 
 class MeshesLoader():
-    def __init__(self, mesh_dir, obj_list, render_size):
+    def __init__(self, mesh_dir, obj_list, render_size, N_pts=100):
         self.device = torch.device("cuda:0")
         self.MESH_DIR = mesh_dir
         self.obj_list = obj_list
         self.MESH_DICT, self.TEXTURE_LIST = self.load_meshes()
         self.MESH_INFO = self.load_mesh_info()
-        self.PTS_DICT = self.sample_pts()
+        self.PTS_DICT = self.sample_pts(N_pts)
+        self.FULL_PTS_DICT = self.full_pts()
         self.on_device()
 
 
@@ -64,19 +65,24 @@ class MeshesLoader():
         return mesh_info_dict
 
 
-    def sample_pts(self):
+    def sample_pts(self, N_pts):
         points_dict = {}
         for obj_id in self.MESH_DICT.keys():
-            points_dict[obj_id] = sample_points_from_meshes(self.MESH_DICT[obj_id], 3000)[0].to(self.device)
+            points_dict[obj_id] = sample_points_from_meshes(self.MESH_DICT[obj_id], N_pts)[0].to(self.device)
+            # points_dict[obj_id] = self.MESH_DICT[obj_id].verts_list()[0]
         return points_dict
     
-    
+    def full_pts(self):
+        points_dict = {}
+        for obj_id in self.MESH_DICT.keys():
+            points_dict[obj_id] = self.MESH_DICT[obj_id].verts_list()[0].to(self.device)
+        return points_dict
+
     def on_device(self):
         for obj_id in self.MESH_DICT.keys():
             self.MESH_DICT[obj_id] = self.MESH_DICT[obj_id].to(self.device)
         for obj_id in self.PTS_DICT.keys():
             self.PTS_DICT[obj_id] = self.PTS_DICT[obj_id].to(self.device)
-
 
     def batch_meshes(self, id_batch):
         id_batch = id_batch.cpu().numpy()
@@ -90,11 +96,9 @@ class MeshesLoader():
                             textures=texture_list)
         return mesh_batch
 
-
     def batch_meshes_info(self, id_batch):
         mesh_info_batch = [self.MESH_INFO[id] for id in id_batch]
         return mesh_info_batch
-
 
     def batch_pts(self, id_batch):
         pts_batch = torch.stack([self.PTS_DICT[id] for id in id_batch])

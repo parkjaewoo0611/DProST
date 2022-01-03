@@ -4,7 +4,7 @@ from torchvision.utils import make_grid
 import torch.nn.functional as F
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker, image_mean_std_check, proj_visualize
-
+from tqdm import tqdm
 
 class Trainer(BaseTrainer):
     """
@@ -26,6 +26,7 @@ class Trainer(BaseTrainer):
             self.len_epoch = len_epoch
         self.valid_data_loader = valid_data_loader
         self.do_validation = self.valid_data_loader is not None
+        self.save_period = self.config['trainer']['save_period']
         self.lr_scheduler = lr_scheduler
         self.log_step = int(np.sqrt(data_loader.batch_size))
         # self.mean, self.std = image_mean_std_check(self.data_loader)
@@ -50,7 +51,7 @@ class Trainer(BaseTrainer):
         self.model.train()
         self.model.training = True
 
-        for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
+        for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
             images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
             ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
             ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
@@ -81,7 +82,7 @@ class Trainer(BaseTrainer):
                 break
         log = self.train_metrics.result()
 
-        if self.do_validation:
+        if self.do_validation and epoch % self.save_period == 0 :
             val_log = self._valid_epoch(epoch)
             log.update(**{'val_'+k : v for k, v in val_log.items()})
 
@@ -100,24 +101,26 @@ class Trainer(BaseTrainer):
         self.model.training = False
         self.valid_metrics.reset()
         with torch.no_grad():
-
-            for batch_idx, (images, masks, obj_ids, bboxes, RTs) in enumerate(self.valid_data_loader):
+            for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(self.valid_data_loader)):
                 images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
                 ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
                 ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
-                meshes = self.mesh_loader.batch_meshes(obj_ids)
-
                 output, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
                 P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
-
                 loss = 0
                 for idx in list(output.keys())[1:]:
-                    loss += self.criterion(RTs, output[idx], RTs, **P)
-
+                    loss += self.criterion(RTs, output[idx], **P)
                 self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
                 self.valid_metrics.update('loss', loss.detach().item())
+                M = {
+                    'out_RT' : output[list(output.keys())[-1]]['RT'],
+                    'gt_RT' : RTs,
+                    'ids' : obj_ids,
+                    'points' : P['vertexes'],
+                    'depth_maps' : depths
+                }
                 for met in self.metric_ftns:
-                    self.valid_metrics.update(met.__name__, met(output[list(output.keys())[-1]]['RT'], RTs, meshes, obj_ids))
+                    self.valid_metrics.update(met.__name__, met(**M))
 
                 if batch_idx % (len(self.valid_data_loader) // 2) == 0:
                     self.visualize(images.detach().cpu(), RTs, output, P)

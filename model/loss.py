@@ -1,7 +1,7 @@
 import torch.nn.functional as F
 import torch
 from pytorch3d import transforms
-from utils.util import TCO_to_vxvyvz, grid_transformer, dynamic_projective_stn, transform_pts
+from utils.util import TCO_to_vxvyvz, dynamic_projective_stn, transform_pts
 
 def geodesic_vxvyvz_loss(gt_RT, output, K_crop, **kwargs):
     out_RT = output['RT']

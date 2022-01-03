@@ -50,7 +50,9 @@ def main(config, start_level, end_level):
     # get function handles of loss and metrics
     loss_fn = getattr(module_loss, config['loss'])
     # metric_fns = [getattr(module_metric, met) for met in config['metrics']]
-    metrics = ['ADD_score_02', 'ADD_score_05', 'ADD_score_10', 'proj_score_2', 'proj_score_5', 'proj_score_10']
+    metrics = ["VSD_score", "MSSD_score", "MSPD_score", 
+               "ADD_score_02", "ADD_score_05", "ADD_score_10", 
+               "PROJ_score_02", "PROJ_score_05", "PROJ_score_10"]
     metric_fns = [getattr(module_metric, met) for met in metrics]
 
     logger.info('Loading checkpoint: {} ...'.format(config.resume))

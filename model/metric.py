@@ -1,268 +1,204 @@
 import torch
-from utils.util import TCO_to_RT, LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, K
-from utils.bop_toolkit.bop_toolkit_lib.pose_error import mssd, mspd, re, te, proj
+from utils.util import TCO_to_RT
+from utils.bop_toolkit.bop_toolkit_lib.pose_error import vsd, mssd, mspd, re, te, proj, add, adi
+from utils.LM_parameter import (
+    VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, VSD_REN, VSD_THRESHOLD, 
+    MSSD_THRESHOLD,
+    MSPD_THRESHOLD,
+    LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, K)
 import numpy as np
 
-def MSSD_score(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def VSD_score(out_RT, gt_RT, ids, depth_maps, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    MSSD = {'0.05':[], 
-            '0.10':[],
-            '0.15':[],
-            '0.20':[],
-            '0.25':[],
-            '0.30':[],
-            '0.35':[],
-            '0.40':[],
-            '0.45':[],
-            '0.50':[],
-    }
-
+    AR_VSD = []
     for i, id in enumerate(ids):
-        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        diameter = LM_idx2diameter[id]
+        depth_map = depth_maps[i].squeeze(0).numpy()
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        e = vsd(R_e, t_e, R_g, t_g, depth_map, K, VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, diameter, VSD_REN, id, 'step')
+        result = np.mean(np.array(e)[None] < VSD_THRESHOLD)
+        AR_VSD.append(result)
+    mAR_VSD_score = np.mean(AR_VSD)
+    return mAR_VSD_score
 
-        pred_RT = pred_RT.detach().cpu().numpy()
-        labe_RT = labe_RT.detach().cpu().numpy()
-        pts = pts.detach().cpu().numpy()[0]
-
+def MSSD_score(out_RT, gt_RT, ids, points, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
+    points = points.detach().cpu().numpy()
+    ids = ids.cpu().numpy()
+    AR_MSSD = []
+    for i, id in enumerate(ids):
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
         syms = LM_idx2syms[id]
-        out_d = mssd(pred_RT[0, :3, :3], pred_RT[0, :3, 3:], labe_RT[0, :3, :3], labe_RT[0, :3, 3:], pts, syms)
-        for key in MSSD.keys():
-            thr = LM_idx2diameter[id] * float(key)
-            MSSD[key].append((out_d - thr)<0)
-        
-    for key in MSSD.keys():
-        MSSD[key] = sum(MSSD[key])/len(MSSD[key])
-    
-    AR_MSSD = np.array(list(MSSD.values())).mean()
-    return AR_MSSD
+        e = mssd(R_e, t_e, R_g, t_g, pts, syms)
+        result = np.mean(np.array(e)[None] < MSSD_THRESHOLD * LM_idx2diameter[id])
+        AR_MSSD.append(result)            
+    mAR_MSSD = np.mean(AR_MSSD)
+    return mAR_MSSD
 
-
-def R_score(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def MSPD_score(out_RT, gt_RT, ids, points, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
+    points = points.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    R_dist = []
-
+    AR_MSPD = []
     for i, id in enumerate(ids):
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        syms = LM_idx2syms[id]
+        e = mspd(R_e, t_e, R_g, t_g, K, pts, syms)
+        result = np.mean(np.array(e)[None] < MSPD_THRESHOLD)
+        AR_MSPD.append(result)            
+    mAR_MSPD = np.mean(AR_MSPD)
+    return mAR_MSPD
 
-        pred_RT = pred_RT.detach().cpu().numpy()
-        labe_RT = labe_RT.detach().cpu().numpy()
-
-        out_d = re(pred_RT[0, :3, :3], labe_RT[0, :3, :3])
-
-        R_dist.append(out_d)
-        
-    
-    R_dist = np.array(list(R_dist)).mean()
-    return R_dist
-
-def t_score(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def RE_score(out_RT, gt_RT, ids, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    t_dist = []
-
+    RE = []
     for i, id in enumerate(ids):
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        e = re(R_e, R_g)
+        result = np.mean(np.array(e))
+        RE.append(result)    
+    mRE = np.mean(RE)
+    return mRE
 
-        pred_RT = pred_RT.detach().cpu().numpy()
-        labe_RT = labe_RT.detach().cpu().numpy()
-
-        out_d = te(pred_RT[0, :3, 3:], labe_RT[0, :3, 3:])
-
-        t_dist.append(out_d)
-        
-    
-    t_dist = np.array(list(t_dist)).mean()
-    return t_dist
-
-def proj_score_02(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def TE_score(out_RT, gt_RT, ids, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    proj_dist = []
-
+    TE = []
     for i, id in enumerate(ids):
-        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        e = te(t_e, t_g)
+        result = np.mean(np.array(e))
+        TE.append(result)    
+    mTE = np.mean(TE)
+    return mTE
 
-        pred_RT = pred_RT.detach().cpu().numpy()
-        labe_RT = labe_RT.detach().cpu().numpy()
-        pts = pts.detach().cpu().numpy()[0]
-
-        out_d = proj(pred_RT[0, :3, :3], pred_RT[0, :3, 3:], labe_RT[0, :3, :3], labe_RT[0, :3, 3:], K, pts)
-
-        proj_dist.append((out_d - 2)<0)
-        
-    return sum(proj_dist)/len(proj_dist)
-
-
-def proj_score_05(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def PROJ_score_02(out_RT, gt_RT, points, ids, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    proj_dist = []
-
+    points = points.detach().cpu().numpy()
+    PROJ = []
     for i, id in enumerate(ids):
-        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        e = proj(R_e, t_e, R_g, t_g, K, pts)
+        PROJ.append((e - 2)<0)
+    mPROJ = np.mean(PROJ)
+    return mPROJ
 
-        pred_RT = pred_RT.detach().cpu().numpy()
-        labe_RT = labe_RT.detach().cpu().numpy()
-        pts = pts.detach().cpu().numpy()[0]
-
-        out_d = proj(pred_RT[0, :3, :3], pred_RT[0, :3, 3:], labe_RT[0, :3, :3], labe_RT[0, :3, 3:], K, pts)
-
-        proj_dist.append((out_d - 5)<0)
-        
-    return sum(proj_dist)/len(proj_dist)
-
-
-def proj_score_10(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def PROJ_score_05(out_RT, gt_RT, points, ids, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    proj_dist = []
-
+    points = points.detach().cpu().numpy()
+    PROJ = []
     for i, id in enumerate(ids):
-        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        e = proj(R_e, t_e, R_g, t_g, K, pts)
+        PROJ.append((e - 5)<0)
+    mPROJ = np.mean(PROJ)
+    return mPROJ
 
-        pred_RT = pred_RT.detach().cpu().numpy()
-        labe_RT = labe_RT.detach().cpu().numpy()
-        pts = pts.detach().cpu().numpy()[0]
-
-        out_d = proj(pred_RT[0, :3, :3], pred_RT[0, :3, 3:], labe_RT[0, :3, :3], labe_RT[0, :3, 3:], K, pts)
-
-        proj_dist.append((out_d - 10)<0)
-        
-    return sum(proj_dist)/len(proj_dist)
-
-def ADD_score_02(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def PROJ_score_10(out_RT, gt_RT, points, ids, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    ADD10 = []
-
+    points = points.detach().cpu().numpy()
+    PROJ = []
     for i, id in enumerate(ids):
-        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        e = proj(R_e, t_e, R_g, t_g, K, pts)
+        PROJ.append((e - 10)<0)
+    mPROJ = np.mean(PROJ)
+    return mPROJ
+
+def ADD_score_02(out_RT, gt_RT, points, ids, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
+    ids = ids.cpu().numpy()
+    points = points.detach().cpu().numpy()
+    ADD02 = []
+    for i, id in enumerate(ids):
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
         if LM_idx2symmetry[id] == 'none':
-            out_d = ADD(pred_RT, labe_RT, pts)
+            e = add(R_e, t_e, R_g, t_g, pts)
         else:
-            out_d = ADD_S(pred_RT, labe_RT, pts)
-        ADD10.append((out_d.detach().cpu().numpy() - LM_idx2diameter[id]*0.02)<0)
+            e = adi(R_e, t_e, R_g, t_g, pts)
+        ADD02.append((e - LM_idx2diameter[id]*0.02)<0)
+    mADD02 = np.mean(ADD02)
+    return mADD02
 
-    return sum(ADD10)/len(ADD10)
-
-def ADD_score_05(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def ADD_score_05(out_RT, gt_RT, points, ids, **kwargss):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
-    ADD10 = []
-
+    points = points.detach().cpu().numpy()
+    ADD05 = []
     for i, id in enumerate(ids):
-        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
         if LM_idx2symmetry[id] == 'none':
-            out_d = ADD(pred_RT, labe_RT, pts)
+            e = add(R_e, t_e, R_g, t_g, pts)
         else:
-            out_d = ADD_S(pred_RT, labe_RT, pts)
-        ADD10.append((out_d.detach().cpu().numpy() - LM_idx2diameter[id]*0.05)<0)
+            e = adi(R_e, t_e, R_g, t_g, pts)
+        ADD05.append((e - LM_idx2diameter[id]*0.05)<0)
+    mADD05 = np.mean(ADD05)
+    return mADD05
 
-    return sum(ADD10)/len(ADD10)
-
-def ADD_score_10(prediction, RTs, meshes, ids):
-    TCO_output = prediction.clone()
-    TCO_label = RTs.clone()
-    points = meshes.clone().verts_list()
+def ADD_score_10(out_RT, gt_RT, points, ids, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
     ids = ids.cpu().numpy()
-
+    points = points.detach().cpu().numpy()
     ADD10 = []
-
     for i, id in enumerate(ids):
-        pts = points[i].unsqueeze(0) * LM_idx2radius[id]
-        pred_RT = TCO_output[i:i+1]
-        labe_RT = TCO_label[i:i+1]
-        pred_RT[:, :3, 3] = pred_RT[:, :3, 3] * LM_idx2radius[id]
-        labe_RT[:, :3, 3] = labe_RT[:, :3, 3] * LM_idx2radius[id]
+        pts = points[i] * LM_idx2radius[id]
+        R_e = out_RT[i, :3, :3]
+        R_g = gt_RT[i, :3, :3]
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
         if LM_idx2symmetry[id] == 'none':
-            out_d = ADD(pred_RT, labe_RT, pts)
+            e = add(R_e, t_e, R_g, t_g, pts)
         else:
-            out_d = ADD_S(pred_RT, labe_RT, pts)
-        ADD10.append((out_d.detach().cpu().numpy() - LM_idx2diameter[id]*0.1)<0)
-
-    return sum(ADD10)/len(ADD10)
-
-
-def ADD(output, target, points):
-    pred_out_R, pred_out_T = TCO_to_RT(output)
-    labe_R, labe_T = TCO_to_RT(target)
-
-    pred_out_pts = torch.bmm(pred_out_R, points.permute(0, 2, 1)) + pred_out_T.repeat(1, 1, points.shape[1])
-    labe_pts = torch.bmm(labe_R, points.permute(0, 2, 1)) + labe_T.repeat(1, 1, points.shape[1])
-
-    labe_pts = labe_pts.permute(0, 2, 1)
-    pred_out_pts = pred_out_pts.permute(0, 2, 1)
-
-    out_lossvalue = torch.norm(pred_out_pts - labe_pts, p=2, dim=2).mean(1)
-
-    return out_lossvalue
-
-def ADD_S(output, target, points):
-    pred_out_R, pred_out_T = TCO_to_RT(output)
-    labe_R, labe_T = TCO_to_RT(target)
-
-    pred_out_pts = torch.bmm(pred_out_R, points.permute(0, 2, 1)) + pred_out_T.repeat(1, 1, points.shape[1])
-    labe_pts = torch.bmm(labe_R, points.permute(0, 2, 1)) + labe_T.repeat(1, 1, points.shape[1])
-
-    labe_pts = labe_pts.permute(0, 2, 1)
-    pred_out_pts = pred_out_pts.permute(0, 2, 1)
-
-    out_lossvalue = torch.cdist(pred_out_pts, labe_pts).min(2)[0].mean(1)
-
-    return out_lossvalue
+            e = adi(R_e, t_e, R_g, t_g, pts)
+        ADD10.append((e - LM_idx2diameter[id]*0.10)<0)
+    mADD10 = np.mean(ADD10)
+    return mADD10
