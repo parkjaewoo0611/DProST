@@ -566,12 +566,10 @@ def contour_visualize(render, label, img, color=(0, 255, 0), only_label=False):
         result = cv2.drawContours(result, contours_render, -1, (0, 0, 255), 2)
     return result
 
-
 def farthest_rotation_sampling(dataset, N):
-    references = []
-    farthest_idx = np.zeros(N)
+    farthest_idx = np.zeros(N).astype(int)
     farthest_Rs = np.zeros([N, 3, 3])
-    Rs = torch.tensor(np.stack([batch['RT'][:3, :3] for i, batch in enumerate(dataset)]))
+    Rs = torch.tensor(np.stack([data['RT'][:3, :3] for data in dataset]))
     mask_pixel_N = [np.array(Image.open(data['mask'])).sum() for data in dataset]
     farthest_idx[0] = np.array(mask_pixel_N).argmax()
     farthest_Rs[0] = Rs[int(farthest_idx[0])]
@@ -580,10 +578,7 @@ def farthest_rotation_sampling(dataset, N):
         farthest_idx[i] = torch.argmax(distances)
         farthest_Rs[i] = Rs[int(farthest_idx[i])]
         distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_Rs[i]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs))
-
-    for idx in list(farthest_idx.astype(int)):
-        references.append(dataset[idx])
-    return references
+    return [dataset[idx] for idx in list(farthest_idx)]
 
 def orthographic_pool(grids, mask, feature, ftr_size):
     f_mask, t_mask, r_mask = mask
