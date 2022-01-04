@@ -56,9 +56,9 @@ class ConfigParser:
             if opt.type == list:
                 args.add_argument(*opt.flags, nargs="*", type=int)
             elif opt.type == bool:
-                args.add_argument(*opt.flags, default=None, type=str2bool)
+                args.add_argument(*opt.flags, type=str2bool)
             elif opt.type is not list:
-                args.add_argument(*opt.flags, default=None, type=opt.type)
+                args.add_argument(*opt.flags, type=opt.type)
 
 
         if not isinstance(args, tuple):
@@ -84,6 +84,8 @@ class ConfigParser:
             config["gpu_id"] = args.device
         if args.result_path is not None:
             config["result_path"] = args.result_path
+        if args.visualize is not None:
+            config["visualize"] = args.visualize
         return cls(config, resume, modification)
 
     def init_obj(self, name, module, *args, **kwargs):

@@ -106,23 +106,23 @@ def main(config, start_level, end_level):
                 total_metrics[i] += metric(prediction[list(prediction.keys())[-1]], RTs, meshes, obj_ids) * batch_size
 
             #### visualize images
-            SS = 256
+            size = 256
             K_batch = model.K.repeat(1, 1, 1).to(bboxes.device)
-            grid_crop, coeffi_crop, K_crop, bbox_crop = crop_inputs(model.projstn_grid.to(RTs.device), model.coefficient.to(RTs.device), K_batch, bboxes, (SS, SS), lamb=2.5)
+            grid_crop, coeffi_crop, K_crop, bbox_crop = crop_inputs(model.projstn_grid.to(RTs.device), model.coefficient.to(RTs.device), K_batch, bboxes, (size, size), lamb=2.5)
 
-            img = get_roi_feature(bbox_crop, images, (model.H, model.W), (SS, SS)).detach().cpu()
+            img = get_roi_feature(bbox_crop, images, (model.H, model.W), (size, size)).detach().cpu()
             img = make_grid(img, nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             img_vis = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
             
             pr_proj_labe = proj_visualize(RTs, grid_crop, coeffi_crop, P['ftr'], P['ftr_mask'])
-            pr_proj_labe = F.interpolate(pr_proj_labe, (SS, SS), mode='bilinear', align_corners=True)
+            pr_proj_labe = F.interpolate(pr_proj_labe, (size, size), mode='bilinear', align_corners=True)
             labe = make_grid(pr_proj_labe.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             labe_vis = ((labe - np.min(labe))/(np.max(labe) - np.min(labe)) * 255).astype(np.uint8)
             
             labe_c = contour_visualize_2(labe, labe, img, only_label=True)
 
             pr_proj_input = proj_visualize(prediction[start_level+1], grid_crop, coeffi_crop, P['ftr'], P['ftr_mask'])
-            pr_proj_input = F.interpolate(pr_proj_input, (SS, SS), mode='bilinear', align_corners=True)
+            pr_proj_input = F.interpolate(pr_proj_input, (size, size), mode='bilinear', align_corners=True)
             input = make_grid(pr_proj_input.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
             input_vis = ((input - np.min(input))/(np.max(input) - np.min(input)) * 255).astype(np.uint8)
 
@@ -133,7 +133,7 @@ def main(config, start_level, end_level):
 
             for idx in list(prediction.keys())[1:]:
                 pr_proj_pred = proj_visualize(prediction[idx], grid_crop, coeffi_crop, P['ftr'], P['ftr_mask'])    
-                pr_proj_pred = F.interpolate(pr_proj_pred, (SS, SS), mode='bilinear', align_corners=True)
+                pr_proj_pred = F.interpolate(pr_proj_pred, (size, size), mode='bilinear', align_corners=True)
                 pred = make_grid(pr_proj_pred.detach().cpu(), nrow=batch_size, normalize=True).permute(1,2,0).numpy()
                 pred_vis = ((pred - np.min(pred))/(np.max(pred) - np.min(pred)) * 255).astype(np.uint8)
     

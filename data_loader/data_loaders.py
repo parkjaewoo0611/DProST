@@ -15,7 +15,8 @@ class DataLoader(BaseDataLoader):
     DataLoader for pickle data which has location of images to load 
     and etc labels
     """
-    def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=True, img_ratio=1.0, shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True, **kwargs):
+    def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=True, img_ratio=1.0, 
+                 shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True, **kwargs):
         H = int(480 * img_ratio)
         W = int(640 * img_ratio)
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(size=(H, W))])

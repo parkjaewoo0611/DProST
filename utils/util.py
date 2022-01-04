@@ -80,6 +80,7 @@ import matplotlib.pyplot as plt
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
 from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle
 from torchvision.ops import roi_align
+from torchvision.utils import make_grid
 import cv2
 from PIL import Image
 
@@ -512,6 +513,12 @@ def proj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
     pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
     return pr_proj
 
+def get_proj_grid(RTs, grid_crop, coeffi_crop, ftr, ftr_mask, size):
+    proj = proj_visualize(RTs, grid_crop, coeffi_crop, ftr, ftr_mask)
+    proj = F.interpolate(proj, (size, size), mode='bilinear', align_corners=True)
+    proj = make_grid(proj.detach().cpu(), nrow=RTs.shape[0], normalize=True).permute(1,2,0).numpy()
+    proj = ((proj - np.min(proj))/(np.max(proj) - np.min(proj)) * 255).astype(np.uint8)
+    return proj
 
 def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
     ###### grid distance change
@@ -540,7 +547,7 @@ def image_mean_std_check(dataloader):
     return total_mean, total_std
 
 
-def contour_visualize_2(render, label, img, color=(0, 255, 0), only_label=False):
+def contour_visualize(render, label, img, color=(0, 255, 0), only_label=False):
     render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
     render = ((render - np.min(render))/(np.max(render) - np.min(render)) * 255).astype(np.uint8)
     label = cv2.cvtColor(label, cv2.COLOR_RGB2GRAY)

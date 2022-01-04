@@ -10,14 +10,8 @@ from utils.bop_toolkit.bop_toolkit_lib.inout import load_ply, load_json
 # pytorch3d functions
 import torch
 from pytorch3d.structures import Meshes
-from pytorch3d.renderer import (
-    OrthographicCameras, RasterizationSettings, MeshRenderer,
-    MeshRasterizer, HardPhongShader, TexturesVertex,
-    get_world_to_view_transform, PerspectiveCameras
-)
+from pytorch3d.renderer import TexturesVertex
 from pytorch3d.ops import sample_points_from_meshes
-from pytorch3d.transforms import euler_angles_to_matrix
-
 from utils.LM_parameter import LM_idx2radius
 
 
@@ -69,7 +63,6 @@ class MeshesLoader():
         points_dict = {}
         for obj_id in self.MESH_DICT.keys():
             points_dict[obj_id] = sample_points_from_meshes(self.MESH_DICT[obj_id], N_pts)[0].to(self.device)
-            # points_dict[obj_id] = self.MESH_DICT[obj_id].verts_list()[0]
         return points_dict
     
     def full_pts(self):

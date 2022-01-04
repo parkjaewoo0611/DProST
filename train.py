@@ -2,6 +2,7 @@ import sys
 sys.path.append('utils')
 sys.path.append('utils/bop_toolkit')
 import argparse
+from parse_config import str2bool
 import collections
 import torch
 import numpy as np
@@ -14,6 +15,7 @@ from parse_config import ConfigParser
 from trainer import Trainer
 from utils import prepare_device
 import os
+import test
 
 # fix random seeds for reproducibility
 SEED = 123
@@ -34,7 +36,7 @@ def main(config):
     data_loader = config.init_obj('data_loader', module_data)
     if config['data_loader']['args']['test_as_valid']:
         test_args = config['data_loader']['args'].copy()
-        test_args['shuffle'], test_args['training'] = False, False
+        test_args['shuffle'], test_args['training'], test_args['validation_split'] = False, False, 0.0
         valid_data_loader = getattr(module_data, config['data_loader']['type'])(**test_args)
     else:
         valid_data_loader = data_loader.split_validation()
@@ -67,7 +69,14 @@ def main(config):
                       lr_scheduler=lr_scheduler)
 
     trainer.train()
-
+    test_dict = {
+        "data_loader": valid_data_loader,
+        "mesh_loader": mesh_loader,
+        "model": model,
+        "criterion": criterion,
+        "best_path": f"{trainer.best_dir}/model_best.pth",
+    }
+    test.main(config, is_test=False, **test_dict)
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
@@ -77,6 +86,8 @@ if __name__ == '__main__':
                       help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default=None, type=str,
                       help='indices of GPUs to enable (default: all)')
+    args.add_argument('-v', '--visualize', default=False, type=str2bool,
+                      help='visualize results in result folder')
     args.add_argument('--result_path', default=None, type=str,
                       help='result saved path')
     # custom cli options to modify configuration from default values given in json file.
