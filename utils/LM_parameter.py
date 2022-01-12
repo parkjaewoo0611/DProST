@@ -136,6 +136,24 @@ LM_idx2radius = {
     15 : 109.9537,
 }
 
+## radius of DeepIM/data/LINEMOD_6D/LM6d_converted/LM6d_refine/models/**/textured.obj
+LM_idx2synradius = {
+    1 : 0.0595,
+    2 : 0.1404,
+    4 : 0.0996,        
+    5 : 0.1107,         
+    6 : 0.0847,         
+    8 : 0.1458,
+    9 : 0.0640,         
+    10 : 0.0830,
+    11 : 0.0918,        
+    12 : 0.0755,        
+    13 : 0.1451,        
+    14 : 0.1481,
+    15 : 0.1100         
+}
+
+
 FX = 572.4114
 FY = 573.57043
 PX = 325.2611
@@ -157,7 +175,7 @@ VSD_DELTA = 15
 VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
 VSD_NORMALIZED_BY_DIAMETER = True
 VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
-obj_path = '../Dataset/LINEMOD/models'
+obj_path = './data/LINEMOD/BOP_lm/models'
 for obj_id in LM_idx2class.keys():
     VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
 

@@ -42,6 +42,8 @@ def main(config):
         valid_data_loader = data_loader.split_validation()
 
     # mesh loader
+    config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
+    config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
     mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
     # build model architecture, then print to console

@@ -7,7 +7,6 @@ import argparse
 from parse_config import str2bool
 import collections
 import torch
-from torchvision.utils import make_grid
 from tqdm import tqdm
 import data_loader.mesh_loader as module_mesh
 import data_loader.data_loaders as module_data
@@ -15,7 +14,7 @@ import model.loss as module_loss
 import model.metric as module_metric
 import model.model as module_arch
 from parse_config import ConfigParser
-from utils.util import get_roi_feature, contour_visualize, crop_inputs, get_proj_grid
+from utils.util import visualize
 import matplotlib.pyplot as plt
 import numpy as np
 import warnings
@@ -51,6 +50,8 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
             num_workers=2,
             FPS=config['data_loader']['args']['FPS']
         )
+        config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
+        config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
         mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
         # build model architecture
@@ -64,7 +65,6 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     logger.info('Loading checkpoint: {} ...'.format(best_path))
     checkpoint = torch.load(best_path)
     state_dict = checkpoint['state_dict']
-
     model.load_state_dict(state_dict)
     model = model.to(device)
     model.eval()
@@ -118,25 +118,9 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
 
             #### visualize images
             if is_test and config["visualize"]:
-                size = 256
-                K_batch = model.K.repeat(1, 1, 1).to(bboxes.device)
-                grid_crop, coeffi_crop, K_crop, bbox_crop = crop_inputs(model.projstn_grid.to(RTs.device), model.coefficient.to(RTs.device), 
-                                                                        K_batch, bboxes, (size, size), lamb=2.5)
-                img = get_roi_feature(bbox_crop, images, (model.H, model.W), (size, size)).detach().cpu()
-                img = make_grid(img, nrow=batch_size, normalize=True).permute(1,2,0).numpy()
-                label_proj = get_proj_grid(RTs, grid_crop, coeffi_crop, P['ftr'], P['ftr_mask'], size)
-                label_contour = contour_visualize(label_proj, label_proj, img, only_label=True)
-                input_proj = get_proj_grid(output[model.start_level+1]['RT'], grid_crop, coeffi_crop, P['ftr'], P['ftr_mask'], size)
-                input_contour  = contour_visualize(input_proj, label_proj, img)
-                result_proj = np.concatenate((label_proj, input_proj), 0)                
-                result_contour = np.concatenate((label_contour, input_contour), 0)
-                for idx in list(output.keys())[1:]:
-                    level_proj = get_proj_grid(output[idx]['RT'], grid_crop, coeffi_crop, P['ftr'], P['ftr_mask'], size)
-                    level_contour  = contour_visualize(level_proj, label_proj, img)
-                    result_proj = np.concatenate((result_proj, level_proj), 0)
-                    result_contour = np.concatenate((result_contour, level_contour), 0)
-                plt.imsave(f'{result_path}/result_{batch_idx}.png', result_contour)
-                plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', result_proj)
+                c, g = visualize(RTs, output, P)
+                plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
+                plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
 
     n_samples = len(data_loader.sampler)
     log = {'loss': total_loss / n_samples}

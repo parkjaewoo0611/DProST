@@ -1,9 +1,7 @@
 import numpy as np
 import torch
-from torchvision.utils import make_grid
-import torch.nn.functional as F
 from base import BaseTrainer
-from utils import inf_loop, MetricTracker, image_mean_std_check, proj_visualize
+from utils import inf_loop, MetricTracker, visualize
 from tqdm import tqdm
 
 class Trainer(BaseTrainer):
@@ -76,7 +74,9 @@ class Trainer(BaseTrainer):
                     loss.detach().item()))   
 
             if batch_idx % (self.len_epoch // 2) == 0:
-                self.visualize(images.detach().cpu(), RTs, output, P)
+                c, g = visualize(RTs, output, P)
+                self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
+                self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
 
             if batch_idx == self.len_epoch:
                 break
@@ -124,7 +124,9 @@ class Trainer(BaseTrainer):
                     self.valid_metrics.update(met.__name__, met(**M))
 
                 if batch_idx % (len(self.valid_data_loader) // 2) == 0:
-                    self.visualize(images.detach().cpu(), RTs, output, P)
+                    c, g = visualize(RTs, output, P)
+                    self.writer.add_image(f'contour', torch.tensor(c)[None])
+                    self.writer.add_image(f'rendering', torch.tensor(g)[None])
 
         # add histogram of model parameters to the tensorboard
         # for name, p in self.model.named_parameters():
@@ -141,11 +143,4 @@ class Trainer(BaseTrainer):
             total = self.len_epoch
         return base.format(current, total, 100.0 * current / total)
     
-    def visualize(self, images, RTs, output, P):
-        self.writer.add_image(f'image', make_grid(images.detach().cpu(), nrow=2, normalize=True))
-        self.writer.add_image(f'roi_feature', make_grid(P['roi_feature'].detach().cpu(), nrow=2, normalize=True))
-        pr_proj_labe = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-        self.writer.add_image(f'gt', make_grid(pr_proj_labe.detach().cpu(), nrow=2, normalize=True))
-        for idx in list(output.keys())[1:]:
-            pr_proj_pred = proj_visualize(output[idx]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-            self.writer.add_image(f'prediction_{idx}', make_grid(pr_proj_pred.detach().cpu(), nrow=2, normalize=True))
+

@@ -1,8 +1,8 @@
 {
-    "name": "ProjectivePose",
+    "name": "DProST",
     "gpu_id": "0",
     "arch": {
-        "type": "ProjectivePose",
+        "type": "DProST",
         "args": {
             "img_ratio": 0.5,
             "input_size": 128,
@@ -17,11 +17,12 @@
     "data_loader": {
         "type": "DataLoader",
         "args":{
-            "data_dir": "../Dataset/LINEMOD",
+            "data_dir": "./data/LINEMOD",
             "batch_size":1,
-            "obj_list" : [10],
+            "obj_list" : [11],
             "reference_N": 8,
-            "is_pbr": true,
+            "is_pbr": false,
+            "is_syn": true,
             "img_ratio" : 0.5,
             "shuffle": true,
             "validation_split": 0.0,
@@ -33,8 +34,6 @@
     "mesh_loader": {
         "type": "MeshesLoader",
         "args":{
-            "mesh_dir": "../Dataset/LINEMOD/models",
-            "obj_list" : [10],
             "render_size" : 128,
             "N_pts" : 100
         }

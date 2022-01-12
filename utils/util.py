@@ -513,13 +513,6 @@ def proj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
     pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
     return pr_proj
 
-def get_proj_grid(RTs, grid_crop, coeffi_crop, ftr, ftr_mask, size):
-    proj = proj_visualize(RTs, grid_crop, coeffi_crop, ftr, ftr_mask)
-    proj = F.interpolate(proj, (size, size), mode='bilinear', align_corners=True)
-    proj = make_grid(proj.detach().cpu(), nrow=RTs.shape[0], normalize=True).permute(1,2,0).numpy()
-    proj = ((proj - np.min(proj))/(np.max(proj) - np.min(proj)) * 255).astype(np.uint8)
-    return proj
-
 def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
     ###### grid distance change
     obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
@@ -546,24 +539,34 @@ def image_mean_std_check(dataloader):
     print("std: " + str(total_std))
     return total_mean, total_std
 
+def visualize(RTs, output, P):
+    batch_size = RTs.shape[0]
+    img = P['roi_feature']
+    lab = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+    lev = []
+    for idx in list(output.keys()):
+        lev.append(proj_visualize(output[idx]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask']))
+    lev = torch.cat(lev, 0)
+    img_g = make_grid(img, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    lab_g = make_grid(lab, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    lev_g = make_grid(lev, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    g = np.concatenate((img_g, lab_g, lev_g), 0)
+    lab_c = contour(lab_g, img_g, is_label=True)
+    lev_c = contour(lev_g, np.tile(lab_c, (len(output.keys()), 1, 1)), is_label=False)
+    c = np.concatenate((lab_c, lev_c), 0)
+    return c, g
 
-def contour_visualize(render, label, img, color=(0, 255, 0), only_label=False):
-    render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
+def contour(render, img, is_label):
+    if is_label: 
+        color = (0, 255, 0) 
+    else: 
+        color = (0, 0, 255)
+    img = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8).copy() # convert to contiguous array
     render = ((render - np.min(render))/(np.max(render) - np.min(render)) * 255).astype(np.uint8)
-    label = cv2.cvtColor(label, cv2.COLOR_RGB2GRAY)
-    label = ((label - np.min(label))/(np.max(label) - np.min(label)) * 255).astype(np.uint8)
-    img = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8)
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    _, thr_image_render = cv2.threshold(render, 10, 255, 0)
-    _, thr_image_label = cv2.threshold(label, 10, 255, 0)
-    contours_render, hierarchy = cv2.findContours(thr_image_render, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    contours_label, hierarchy = cv2.findContours(thr_image_label, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    if only_label:
-        result = cv2.drawContours(img, contours_label, -1, (0, 255, 0), 2)
-    else:
-        result = cv2.drawContours(img, contours_label, -1, (0, 255, 0), 2)
-        result = cv2.drawContours(result, contours_render, -1, (0, 0, 255), 2)
+    render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
+    _, thr = cv2.threshold(render, 10, 255, 0)
+    contours, _ = cv2.findContours(thr, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    result = cv2.drawContours(img, contours, -1, color, 2)
     return result
 
 def farthest_rotation_sampling(dataset, N):
@@ -579,47 +582,6 @@ def farthest_rotation_sampling(dataset, N):
         farthest_Rs[i] = Rs[int(farthest_idx[i])]
         distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_Rs[i]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs))
     return [dataset[idx] for idx in list(farthest_idx)]
-
-def orthographic_pool(grids, mask, feature, ftr_size):
-    f_mask, t_mask, r_mask = mask
-    f_feature, t_feature, r_feature = feature
-    grid_f, grid_t, grid_r = grids
-    bsz = f_feature.shape[0]
-
-    grid_f = grid_f.clone().to(f_feature.device).repeat(bsz, 1, 1, 1, 1)
-    grid_t = grid_t.clone().to(t_feature.device).repeat(bsz, 1, 1, 1, 1)
-    grid_r = grid_r.clone().to(r_feature.device).repeat(bsz, 1, 1, 1, 1)
-
-    ## 3d mask
-    f_mask_3d = F.interpolate(f_mask, (ftr_size, ftr_size))  
-    t_mask_3d = F.interpolate(t_mask, (ftr_size, ftr_size))  
-    r_mask_3d = F.interpolate(r_mask, (ftr_size, ftr_size))  
-
-    f_mask_3d = f_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
-    t_mask_3d = t_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
-    r_mask_3d = r_mask_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
-
-    f_mask_3d = F.grid_sample(f_mask_3d, grid_f)
-    t_mask_3d = F.grid_sample(t_mask_3d, grid_t)
-    r_mask_3d = F.grid_sample(r_mask_3d, grid_r)
-    ftr_mask_3d = f_mask_3d * t_mask_3d * r_mask_3d
-
-    ## 3d image
-    f_3d = F.interpolate(f_feature, (ftr_size, ftr_size))  
-    t_3d = F.interpolate(t_feature, (ftr_size, ftr_size))  
-    r_3d = F.interpolate(r_feature, (ftr_size, ftr_size))  
-
-    f_3d = f_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)                
-    t_3d = t_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
-    r_3d = r_3d.unsqueeze(2).repeat(1, 1, ftr_size, 1, 1)
-
-    f_3d = F.grid_sample(f_3d, grid_f)
-    t_3d = F.grid_sample(t_3d, grid_t)
-    r_3d = F.grid_sample(r_3d, grid_r)
-
-    ftr_3d = (f_3d + t_3d + r_3d) / 3   
-    ftr_3d = ftr_3d * ftr_mask_3d
-    return ftr_3d, ftr_mask_3d
 
 def projective_pool(masks, features, RT, K_crop, ftr_size):
     N_ref = features.shape[0]

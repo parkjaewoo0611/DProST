@@ -61,9 +61,9 @@ class LocalizationNetwork(nn.Module):
     
         
 
-class ProjectivePose(BaseModel):
+class DProST(BaseModel):
     def __init__(self, img_ratio, input_size, ftr_size, start_level, end_level, model_name='res18', occlusion=True, pose_dim=9, N_z = 100, training=True):
-        super(ProjectivePose, self).__init__()
+        super(DProST, self).__init__()
         self.pose_dim = pose_dim
 
         # Projective STN default grid with camera parameter
