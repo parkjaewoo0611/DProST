@@ -101,7 +101,7 @@ class DataLoader(BaseDataLoader):
             images.append(self.transform(image))
             obj_ids.append(torch.tensor(obj_id))
             RTs.append(torch.tensor(RT, dtype=torch.float32))
-            depths.append(self.transform(depth))
+            depths.append(torch.tensor(depth, dtype=torch.float32))
             masks.append(self.transform(mask))
             bboxes.append(torch.tensor(bbox, dtype=torch.float32))
 
@@ -136,7 +136,7 @@ class DataLoader(BaseDataLoader):
                 images.append(self.transform(image))
                 obj_ids.append(torch.tensor(obj_id))
                 RTs.append(torch.tensor(RT, dtype=torch.float32))
-                depths.append(self.transform(depth))
+                depths.append(torch.tensor(depth, dtype=torch.float32))
                 masks.append(self.transform(mask))
                 bboxes.append(torch.tensor(bbox, dtype=torch.float32))
 

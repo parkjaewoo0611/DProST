@@ -16,7 +16,7 @@ import model.model as module_arch
 from parse_config import ConfigParser
 from utils.util import visualize
 import matplotlib.pyplot as plt
-import numpy as np
+import csv
 import warnings
 warnings.filterwarnings("ignore") 
 
@@ -37,6 +37,12 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     logger = config.get_logger('test')
 
     if is_test:
+        # set repeated args required
+        config['data_loader']['args']['img_ratio'] = config['arch']['args']['img_ratio']
+        config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
+        config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
+        config['arch']['args']['device'] = device
+
         # setup data_loader instances
         data_loader = getattr(module_data, config['data_loader']['type'])(
             config['data_loader']['args']['data_dir'],
@@ -47,11 +53,9 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
             shuffle=False,
             validation_split=0.0,
             training=False,
-            num_workers=2,
+            num_workers=4,
             FPS=config['data_loader']['args']['FPS']
         )
-        config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
-        config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
         mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
         # build model architecture
@@ -71,8 +75,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     model.training = False
 
     # set iteration setting
-    model.start_level = config["arch"]["args"]["start_level"]
-    model.end_level = config["arch"]["args"]["end_level"]
+    model.iteration = config["arch"]["args"]["iteration"]
 
     # metric_fns = [getattr(module_metric, met) for met in config['metrics']]
     metrics = ["VSD_score", "MSSD_score", "MSPD_score", 
@@ -96,6 +99,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
             images, masks, bboxes, RTs = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device)
             ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
             ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
+
             output, P = model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
             P['vertexes'] = torch.stack([mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
 
@@ -121,13 +125,20 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
                 c, g = visualize(RTs, output, P)
                 plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
-
+            break
     n_samples = len(data_loader.sampler)
     log = {'loss': total_loss / n_samples}
     log.update({
         met.__name__: round(total_metrics[i].item() / n_samples * 100, 1) for i, met in enumerate(metric_fns)
     })
     logger.info(log)
+    result_csv_path = best_path.split('/')
+    result_csv_path[1], result_csv_path[-1] = 'log', 'test_result.csv'
+    result_csv_path = os.path.join(*result_csv_path)
+    with open(result_csv_path, "w") as csv_file:
+        metric_csv = csv.writer(csv_file)
+        for k, v in log.items():
+            metric_csv.writerow([k, v])
 
 
 if __name__ == '__main__':

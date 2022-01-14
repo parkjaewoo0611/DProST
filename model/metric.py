@@ -1,11 +1,11 @@
-import torch
 from utils.util import TCO_to_RT
 from utils.bop_toolkit.bop_toolkit_lib.pose_error import vsd, mssd, mspd, re, te, proj, add, adi
 from utils.LM_parameter import (
     VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, VSD_REN, VSD_THRESHOLD, 
     MSSD_THRESHOLD,
     MSPD_THRESHOLD,
-    LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, K)
+    LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, 
+    K)
 import numpy as np
 
 def VSD_score(out_RT, gt_RT, ids, depth_maps, **kwargs):
@@ -15,7 +15,7 @@ def VSD_score(out_RT, gt_RT, ids, depth_maps, **kwargs):
     AR_VSD = []
     for i, id in enumerate(ids):
         diameter = LM_idx2diameter[id]
-        depth_map = depth_maps[i].squeeze(0).numpy()
+        depth_map = depth_maps[i].numpy()
         R_e = out_RT[i, :3, :3]
         R_g = gt_RT[i, :3, :3]
         t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]

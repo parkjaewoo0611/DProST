@@ -5,13 +5,11 @@
         "type": "DProST",
         "args": {
             "img_ratio": 0.5,
-            "input_size": 128,
             "ftr_size": 128,
-            "start_level": 2,
-            "end_level": 0,
-            "model_name": "res34",
+            "iteration": 2,
+            "model_name": "res18",
             "occlusion": true,
-            "N_z": 100
+            "N_z": 64
         }
     },
     "data_loader": {
@@ -19,15 +17,14 @@
         "args":{
             "data_dir": "./data/LINEMOD",
             "batch_size":1,
-            "obj_list" : [5],
+            "obj_list" : [1],
             "reference_N": 8,
             "is_pbr": false,
             "is_syn": true,
-            "img_ratio" : 0.5,
             "shuffle": true,
             "validation_split": 0.0,
             "test_as_valid": true,
-            "num_workers": 2,
+            "num_workers": 4,
             "FPS": true,
             "bg_dir": "./data/background"
         }
@@ -36,7 +33,7 @@
         "type": "MeshesLoader",
         "args":{
             "render_size" : 128,
-            "N_pts" : 100
+            "N_pts" : 64
         }
     },
     "optimizer": {
@@ -58,9 +55,9 @@
         }
     },
     "trainer": {
-        "epochs": 3000,
+        "epochs": 1,
         "save_dir": "saved/",
-        "save_period": 100,
+        "save_period": 1,
         "verbosity": 2,
         "monitor": "max val_ADD_score_10",
         "early_stop": 1000,

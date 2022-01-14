@@ -32,6 +32,12 @@ def main(config):
     
     logger = config.get_logger('train')
 
+    # set repeated args required
+    config['data_loader']['args']['img_ratio'] = config['arch']['args']['img_ratio']
+    config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
+    config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
+    config['arch']['args']['device'] = device
+
     # setup data_loader instances
     data_loader = config.init_obj('data_loader', module_data)
     if config['data_loader']['args']['test_as_valid']:
@@ -42,8 +48,6 @@ def main(config):
         valid_data_loader = data_loader.split_validation()
 
     # mesh loader
-    config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
-    config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
     mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
     # build model architecture, then print to console

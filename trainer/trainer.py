@@ -36,7 +36,7 @@ class Trainer(BaseTrainer):
         self.ftr_mask = {}
         obj_references = self.data_loader.select_reference()
         for obj_id, references in obj_references.items():
-            print("Generating Reference Feature...")
+            print(f'Generating Reference Feature of obj {obj_id}')
             self.ftr[obj_id], self.ftr_mask[obj_id] = self.model.build_ref(references)
             self.ftr[obj_id], self.ftr_mask[obj_id] = self.ftr[obj_id].to(self.device), self.ftr_mask[obj_id].to(self.device)
 
@@ -58,16 +58,16 @@ class Trainer(BaseTrainer):
             self.optimizer.zero_grad()
             output, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
             P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])     # Only used to compare PM loss 
-            
+
             loss = 0
             for idx in list(output.keys())[1:]:
                 loss += self.criterion(RTs, output[idx], **P)
-
             loss.backward()
+
             self.optimizer.step()
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
             self.train_metrics.update('loss', loss.detach().item())
-
+            
             if batch_idx % self.log_step == 0:
                 self.logger.debug('Train Epoch: {} {} Loss: {:.6f}'.format(
                     epoch,
@@ -81,6 +81,7 @@ class Trainer(BaseTrainer):
 
             if batch_idx == self.len_epoch:
                 break
+            break
         log = self.train_metrics.result()
 
         if self.do_validation and epoch % self.save_period == 0 :
@@ -106,6 +107,7 @@ class Trainer(BaseTrainer):
                 images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
                 ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
                 ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
+                
                 output, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
                 P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
                 
@@ -126,9 +128,9 @@ class Trainer(BaseTrainer):
 
                 if batch_idx % (len(self.valid_data_loader) // 2) == 0:
                     c, g = visualize(RTs, output, P)
-                    self.writer.add_image(f'contour', torch.tensor(c)[None])
-                    self.writer.add_image(f'rendering', torch.tensor(g)[None])
-
+                    self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
+                    self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
+                break
         # add histogram of model parameters to the tensorboard
         # for name, p in self.model.named_parameters():
         #     self.writer.add_histogram(name, p, bins='auto')
