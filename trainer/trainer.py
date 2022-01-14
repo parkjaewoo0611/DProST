@@ -36,6 +36,7 @@ class Trainer(BaseTrainer):
         self.ftr_mask = {}
         obj_references = self.data_loader.select_reference()
         for obj_id, references in obj_references.items():
+            print("Generating Reference Feature...")
             self.ftr[obj_id], self.ftr_mask[obj_id] = self.model.build_ref(references)
             self.ftr[obj_id], self.ftr_mask[obj_id] = self.ftr[obj_id].to(self.device), self.ftr_mask[obj_id].to(self.device)
 

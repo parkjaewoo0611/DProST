@@ -83,6 +83,7 @@ from torchvision.ops import roi_align
 from torchvision.utils import make_grid
 import cv2
 from PIL import Image
+import random
 
 def TCO_symmetry(TCO_label, mesh_info_batch, continuous_symmetry_N=8):
     bsz = TCO_label.shape[0]
@@ -585,7 +586,6 @@ def farthest_rotation_sampling(dataset, N):
 
 def projective_pool(masks, features, RT, K_crop, ftr_size):
     N_ref = features.shape[0]
-
     index_3d = torch.zeros([ftr_size, ftr_size, ftr_size, 3])
     idx = torch.arange(0, ftr_size)
     index_3d[..., 0], index_3d[..., 1], index_3d[..., 2] = torch.meshgrid(idx, idx, idx)
@@ -612,3 +612,43 @@ def projective_pool(masks, features, RT, K_crop, ftr_size):
     ftr_mask_3d = ftr_mask_3d.transpose(2, 4)          # XYZ to ZYX (DHW)
     ftr_3d = ftr_3d.transpose(2, 4)                    # XYZ to ZYX (DHW)
     return ftr_3d, ftr_mask_3d
+
+def resize_short_edge(im, target_size, max_size, stride=0, interpolation=cv2.INTER_LINEAR, return_scale=False):
+    ## editted from GDR-Net git https://github.com/THU-DA-6D-Pose-Group/GDR-Net/core/base_data_loader.py
+    """Scale the shorter edge to the given size, with a limit of `max_size` on
+    the longer edge. If `max_size` is reached, then downscale so that the
+    longer edge does not exceed max_size. only resize input image to target
+    size and return scale.
+
+    :param im: BGR image input by opencv
+    :param target_size: one dimensional size (the short side)
+    :param max_size: one dimensional max size (the long side)
+    :param stride: if given, pad the image to designated stride
+    :param interpolation: if given, using given interpolation method to resize image
+    :return:
+    """
+    im_shape = im.shape
+    im_size_min = np.min(im_shape[0:2])
+    im_size_max = np.max(im_shape[0:2])
+    im_scale = float(target_size) / float(im_size_min)
+    # prevent bigger axis from being more than max_size:
+    if np.round(im_scale * im_size_max) > max_size:
+        im_scale = float(max_size) / float(im_size_max)
+    im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=interpolation)
+
+    if stride == 0:
+        if return_scale:
+            return im, im_scale
+        else:
+            return im
+    else:
+        # pad to product of stride
+        im_height = int(np.ceil(im.shape[0] / float(stride)) * stride)
+        im_width = int(np.ceil(im.shape[1] / float(stride)) * stride)
+        im_channel = im.shape[2]
+        padded_im = np.zeros((im_height, im_width, im_channel))
+        padded_im[: im.shape[0], : im.shape[1], :] = im
+        if return_scale:
+            return padded_im, im_scale
+        else:
+            return padded_im

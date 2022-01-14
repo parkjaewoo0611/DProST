@@ -19,7 +19,7 @@
         "args":{
             "data_dir": "./data/LINEMOD",
             "batch_size":1,
-            "obj_list" : [11],
+            "obj_list" : [5],
             "reference_N": 8,
             "is_pbr": false,
             "is_syn": true,
@@ -28,7 +28,8 @@
             "validation_split": 0.0,
             "test_as_valid": true,
             "num_workers": 2,
-            "FPS": true
+            "FPS": true,
+            "bg_dir": "./data/background"
         }
     },
     "mesh_loader": {
