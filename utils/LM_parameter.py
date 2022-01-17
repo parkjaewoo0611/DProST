@@ -175,7 +175,7 @@ VSD_DELTA = 15
 VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
 VSD_NORMALIZED_BY_DIAMETER = True
 VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
-obj_path = './data/LINEMOD/BOP_lm/models'
+obj_path = './data/LINEMOD/models'
 for obj_id in LM_idx2class.keys():
     VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
 

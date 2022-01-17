@@ -17,7 +17,7 @@ class DataLoader(BaseDataLoader):
     and etc labels
     """
     def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=False, is_syn=True, img_ratio=1.0, 
-                 shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True, bg_dir=None, **kwargs):
+                 shuffle=True, validation_split=0.0, num_workers=1, training=True, FPS=True, **kwargs):
         H = int(480 * img_ratio)
         W = int(640 * img_ratio)
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(size=(H, W))])
@@ -29,8 +29,8 @@ class DataLoader(BaseDataLoader):
         self.is_syn = is_syn
         self.obj_list = obj_list
         self.FPS = FPS
-        if self.training:
-            self._bg_img_paths = glob.glob(f'{bg_dir}/*')
+        if self.training:                
+            self._bg_img_paths = glob.glob(f'{data_dir}/background/*')
 
         with open(os.path.join(self.data_dir, 'train.pickle'), 'rb') as f:
             self.dataset_train = pickle.load(f)
@@ -82,7 +82,7 @@ class DataLoader(BaseDataLoader):
         for idx, batch_sample in enumerate(data):
             image = self.load_img(batch_sample['image'])
             obj_id = batch_sample['obj_id']
-            RT = batch_sample['RT']
+            RT = batch_sample['RT'].copy()
             RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
             if batch_sample['depth'] is not None:
                 depth = self.load_img(batch_sample['depth'])* batch_sample['depth_scale']
@@ -95,9 +95,9 @@ class DataLoader(BaseDataLoader):
                 mask = depth.copy().astype(bool)
 
             if self.training or reference:
-                bbox = np.array(batch_sample['bbox_obj']) * self.img_ratio
+                bbox = np.array(batch_sample['bbox_obj'].copy()) * self.img_ratio
             else:
-                bbox = np.array(batch_sample['bbox_faster']) * self.img_ratio    # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
+                bbox = np.array(batch_sample['bbox_faster'].copy()) * self.img_ratio    # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
             images.append(self.transform(image))
             obj_ids.append(torch.tensor(obj_id))
             RTs.append(torch.tensor(RT, dtype=torch.float32))
@@ -110,7 +110,7 @@ class DataLoader(BaseDataLoader):
             for idx, batch_sample in enumerate(dataset_syn):
                 image = self.load_img(batch_sample['image'])
                 obj_id = batch_sample['obj_id']
-                RT = batch_sample['RT']
+                RT = batch_sample['RT'].copy()
                 if self.is_pbr:
                     RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
                 else:
@@ -131,7 +131,7 @@ class DataLoader(BaseDataLoader):
                 else:
                     pass
 
-                bbox = np.array(batch_sample['bbox_obj']) * self.img_ratio
+                bbox = np.array(batch_sample['bbox_obj'].copy()) * self.img_ratio
 
                 images.append(self.transform(image))
                 obj_ids.append(torch.tensor(obj_id))

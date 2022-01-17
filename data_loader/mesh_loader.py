@@ -16,9 +16,9 @@ from utils.LM_parameter import LM_idx2radius
 
 
 class MeshesLoader():
-    def __init__(self, data_dir, obj_list, render_size, N_pts=100, **kwargs):
+    def __init__(self, data_dir, obj_list, N_pts=100, **kwargs):
         self.device = torch.device("cuda:0")
-        self.MESH_DIR = os.path.join(data_dir, [folder_name for folder_name in os.listdir(data_dir) if 'BOP' in folder_name][0], 'models')
+        self.MESH_DIR = f'{data_dir}/models'
         self.obj_list = obj_list
         self.MESH_DICT, self.TEXTURE_LIST = self.load_meshes()
         self.MESH_INFO = self.load_mesh_info()

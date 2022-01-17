@@ -16,7 +16,7 @@
         "type": "DataLoader",
         "args":{
             "data_dir": "./data/LINEMOD",
-            "batch_size":1,
+            "batch_size":8,
             "obj_list" : [1],
             "reference_N": 8,
             "is_pbr": false,
@@ -25,14 +25,12 @@
             "validation_split": 0.0,
             "test_as_valid": true,
             "num_workers": 4,
-            "FPS": true,
-            "bg_dir": "./data/background"
+            "FPS": true
         }
     },
     "mesh_loader": {
         "type": "MeshesLoader",
         "args":{
-            "render_size" : 128,
             "N_pts" : 64
         }
     },
@@ -55,9 +53,9 @@
         }
     },
     "trainer": {
-        "epochs": 1,
+        "epochs": 3000,
         "save_dir": "saved/",
-        "save_period": 1,
+        "save_period": 100,
         "verbosity": 2,
         "monitor": "max val_ADD_score_10",
         "early_stop": 1000,

@@ -74,17 +74,16 @@ class Trainer(BaseTrainer):
                     self._progress(batch_idx),
                     loss.detach().item()))   
 
-            if batch_idx % (self.len_epoch // 2) == 0:
-                c, g = visualize(RTs, output, P)
-                self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
-                self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
-
             if batch_idx == self.len_epoch:
                 break
-            break
+
         log = self.train_metrics.result()
 
         if self.do_validation and epoch % self.save_period == 0 :
+            c, g = visualize(RTs, output, P)
+            self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
+            self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
+            
             val_log = self._valid_epoch(epoch)
             log.update(**{'val_'+k : v for k, v in val_log.items()})
 
@@ -126,14 +125,16 @@ class Trainer(BaseTrainer):
                 for met in self.metric_ftns:
                     self.valid_metrics.update(met.__name__, met(**M))
 
-                if batch_idx % (len(self.valid_data_loader) // 2) == 0:
-                    c, g = visualize(RTs, output, P)
-                    self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
-                    self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
-                break
+            c, g = visualize(RTs, output, P)
+            self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
+            self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
+
         # add histogram of model parameters to the tensorboard
         # for name, p in self.model.named_parameters():
         #     self.writer.add_histogram(name, p, bins='auto')
+        for met in self.metric_ftns:
+            v = self.valid_metrics.avg(met.__name__)
+            self.writer.add_scalar(met.__name__ + '/avg', v)
         return self.valid_metrics.result()
 
     def _progress(self, batch_idx):

@@ -125,7 +125,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
                 c, g = visualize(RTs, output, P)
                 plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
-            break
+
     n_samples = len(data_loader.sampler)
     log = {'loss': total_loss / n_samples}
     log.update({
