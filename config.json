@@ -6,21 +6,21 @@
         "args": {
             "img_ratio": 0.5,
             "ftr_size": 128,
-            "iteration": 2,
-            "model_name": "res18",
+            "iteration": 3,
+            "model_name": "res34",
             "occlusion": true,
-            "N_z": 64
+            "N_z": 100
         }
     },
     "data_loader": {
         "type": "DataLoader",
         "args":{
-            "data_dir": "./data/LINEMOD",
-            "batch_size":8,
+            "data_dir": "../Dataset/LINEMOD",
+            "batch_size":2,
             "obj_list" : [1],
             "reference_N": 8,
-            "is_pbr": false,
-            "is_syn": true,
+            "is_pbr": true,
+            "is_syn": false,
             "shuffle": true,
             "validation_split": 0.0,
             "test_as_valid": true,
@@ -53,9 +53,9 @@
         }
     },
     "trainer": {
-        "epochs": 3000,
+        "epochs": 10,
         "save_dir": "saved/",
-        "save_period": 100,
+        "save_period": 5,
         "verbosity": 2,
         "monitor": "max val_ADD_score_10",
         "early_stop": 1000,

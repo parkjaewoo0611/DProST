@@ -1,67 +1,90 @@
 import numpy as np
 
-LM_idx2class = {
-    1: "ape",
-    2: "benchvise",
-    #3: 'bowl',
-    4: "camera",
-    5: "can",
-    6: "cat",
-    #7: 'cup',
-    8: "driller",
-    9: "duck",
-    10: "eggbox",
-    11: "glue",
-    12: "holepuncher",
-    13: "iron",
-    14: "lamp",
-    15: "phone",
+YCBV_idx2class = {
+    1 : "002_master_chef_can",
+    2 : "003_cracker_box",
+    3 : "004_sugar_box",
+    4 : "005_tomato_soup_can",
+    5 : "006_mustard_bottle",
+    6 : "007_tuna_fish_can",
+    7 : "008_pudding_box",
+    8 : "009_gelatin_box",
+    9 : "010_potted_meat_can",
+    10 : "011_banana",
+    11 : "019_pitcher_base",
+    12 : "021_bleach_cleanser",
+    13 : "024_bowl",
+    14 : "025_mug",
+    15 : "035_power_drill",
+    16 : "036_wood_block",
+    17 : "037_scissors",
+    18 : "040_large_marker",
+    19 : "051_large_clamp",
+    20 : "052_extra_large_clamp",
+    21 : "061_foam_brick"
 }
 
-LM_class2idx = {
-    "ape" : 1,
-    "benchvise" : 2,
-    #'bowl' : 3,
-    "camera" : 4,
-    "can" : 5,
-    "cat": 6,
-    #"cup" : 7,
-    "driller" : 8,
-    "duck" : 9,
-    "eggbox" : 10,
-    "glue" : 11,
-    "holepuncher" : 12,
-    "iron" : 13,
-    "lamp" : 14,
-    "phone" : 15,
+YCBV_class2idx = {
+    "002_master_chef_can" : 1,
+    "003_cracker_box" : 2,
+    '004_sugar_box' : 3,
+    "005_tomato_soup_can" : 4,
+    "006_mustard_bottle" : 5,
+    "007_tuna_fish_can": 6,
+    "008_pudding_box" : 7,
+    "009_gelatin_box" : 8,
+    "010_potted_meat_can" : 9,
+    "011_banana" : 10,
+    "019_pitcher_base" : 11,
+    "021_bleach_cleanser" : 12,
+    "024_bowl" : 13,
+    "025_mug" : 14,
+    "035_power_drill" : 15,
+    "036_wood_block" : 16,
+    "037_scissors" : 17,
+    "040_large_marker" : 18,
+    "051_large_clamp" : 19,
+    "052_extra_large_clamp" : 20,
+    "061_foam_brick" : 21
 }
 
-LM_idx2symmetry = {
-    1 : 'none',
-    2 : 'none',
-    #3 : 'sym_con',
-    4 : 'none',
-    5 : 'none',
-    6 : 'none',
-    #7 : 'none',
-    8 : 'none',
-    9 : 'none',
-    10 : 'sym_dis',
-    11 : 'sym_dis',
-    12 : 'none',
-    13 : 'none',
-    14 : 'none',
-    15 : 'none',
+YCBV_idx2symmetry = {
+    1 : "sym_dis",
+    2 : "none",
+    3 : "none",
+    4 : "none",
+    5 : "none",
+    6 : "none",
+    7 : "none",
+    8 : "none",
+    9 : "none",
+    10 : "none",
+    11 : "none",
+    12 : "none",
+    13 : "sym_con",
+    14 : "none",
+    15 : "none",
+    16 : "sym_dis",
+    17 : "none",
+    18 : "sym_con",
+    19 : "sym_dis",
+    20 : "sym_dis",
+    21 : "sym_dis"
 }
 
-LM_idx2syms= {
-    1 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
+YCBV_idx2syms= {
+    1 : [{
+          "R": np.array([[-1, -4.31991e-014, 0], 
+                         [4.31991e-014,  -1, 0],
+                         [0,              0, 1]]),
+          "t": np.array([[0], [0], [0]])
     }],
     2 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])
     }],
-    #3 : 'sym_con',
+    3 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
     4 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])
     }],
@@ -71,28 +94,29 @@ LM_idx2syms= {
     6 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])
     }],
-    #7 : 'none',
+    7 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
+    }],
     8 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])
     }],
     9 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])
     }],
-    10 : [{"R": np.array([[-0.999964, -0.00333777, -0.0077452], 
-                         [0.00321462, -0.999869, 0.0158593  ],
-                         [-0.00779712, 0.0158338, 0.999844 ]]),
-          "t": np.array([[0.232611], [0.694388], [-0.0792063]])
+    10 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
     }],
-    11 : [{"R": np.array([[-0.999633, 0.026679, 0.00479336], 
-                         [-0.0266744, -0.999644, 0.00100504  ],
-                         [0.00481847, 0.000876815, 0.999988 ]]),
-          "t": np.array([[-0.262139], [-0.197966], [0.0321652]])
+    11 : [{"R": np.eye(3, 3),
+          "t": np.zeros([3, 1])
     }],
     12 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])
     }],
-    13 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
+    13 : [{
+          "R": np.array([[-1, -4.31991e-014, 0], 
+                         [4.31991e-014,  -1, 0],
+                         [0,              0, 1]]),
+          "t": np.array([[0], [0], [0]])
     }],
     14 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])

@@ -2,16 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-import torchvision
-from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
-from pytorch3d.transforms.transform3d import Transform3d
-from pytorch3d.transforms import (
-    random_rotations, rotation_6d_to_matrix, euler_angles_to_matrix,
-    so3_relative_angle, quaternion_to_matrix, quaternion_multiply, matrix_to_euler_angles
-)
+from pytorch3d.transforms import rotation_6d_to_matrix, quaternion_to_matrix
 from base import BaseModel
 from utils.util import (
-    apply_imagespace_predictions, deepim_crops, crop_inputs, RT_from_boxes, bbox_add_noise, projective_pool, dynamic_projective_stn,
+    apply_imagespace_predictions, crop_inputs, RT_from_boxes, bbox_add_noise, 
+    carving_feature, dynamic_projective_stn,
     z_buffer_min, z_buffer_max, grid_sampler, get_roi_feature, ProST_grid
 )
 from utils.LM_parameter import FX, FY, PX, PY
@@ -100,7 +95,7 @@ class DProST(BaseModel):
         _, _, ref['K_crop'], ref['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, ref['bboxes'], (self.ftr_size, self.ftr_size))
         ref['roi_feature'] = get_roi_feature(ref['bboxes_crop'], ref['images'], (self.H, self.W), (self.ftr_size, self.ftr_size))
         ref['roi_mask'] = get_roi_feature(ref['bboxes_crop'], ref['masks'], (self.H, self.W), (self.ftr_size, self.ftr_size))
-        ftr, ftr_mask = projective_pool(ref['roi_mask'], ref['roi_feature'], ref['RTs'], ref['K_crop'], self.ftr_size)
+        ftr, ftr_mask = carving_feature(ref['roi_mask'], ref['roi_feature'], ref['RTs'], ref['K_crop'], self.ftr_size)
         return ftr, ftr_mask
 
 

@@ -27,7 +27,6 @@ class Trainer(BaseTrainer):
         self.save_period = self.config['trainer']['save_period']
         self.lr_scheduler = lr_scheduler
         self.log_step = int(np.sqrt(data_loader.batch_size))
-        # self.mean, self.std = image_mean_std_check(self.data_loader)
 
         self.train_metrics = MetricTracker('loss', writer=self.writer)
         self.valid_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
@@ -69,7 +68,8 @@ class Trainer(BaseTrainer):
             self.train_metrics.update('loss', loss.detach().item())
             
             if batch_idx % self.log_step == 0:
-                self.logger.debug('Train Epoch: {} {} Loss: {:.6f}'.format(
+                self.logger.debug('({}) Train Epoch: {} {} Loss: {:.6f}'.format(
+                    self.checkpoint_dir.name,
                     epoch,
                     self._progress(batch_idx),
                     loss.detach().item()))   

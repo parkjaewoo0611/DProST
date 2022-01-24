@@ -1,4 +1,3 @@
-from utils.util import TCO_to_RT
 from utils.bop_toolkit.bop_toolkit_lib.pose_error import vsd, mssd, mspd, re, te, proj, add, adi
 from utils.LM_parameter import (
     VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, VSD_REN, VSD_THRESHOLD, 
