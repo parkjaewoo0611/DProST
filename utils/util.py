@@ -83,7 +83,6 @@ from torchvision.ops import roi_align
 from torchvision.utils import make_grid
 import cv2
 from PIL import Image
-import random
 
 def TCO_symmetry(TCO_label, mesh_info_batch, continuous_symmetry_N=8):
     bsz = TCO_label.shape[0]
@@ -522,24 +521,6 @@ def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
     pr_grid_proj = grid_transformer(grid_proj_origin, RT)
     return pr_grid_proj, obj_dist
 
-
-def image_mean_std_check(dataloader):
-    mean = torch.zeros(3)
-    meansq = torch.zeros(3)
-    count = 0
-
-    for batch_idx, (images, _, _, _, _)  in enumerate(dataloader):
-        mean += images.sum((0, 2, 3))
-        meansq += (images**2).sum((0, 2, 3))
-        count += np.prod([images.shape[0], images.shape[2], images.shape[3]])
-
-    total_mean = mean/count
-    total_var = (meansq/count) - (total_mean**2)
-    total_std = torch.sqrt(total_var)
-    print("mean: " + str(total_mean))
-    print("std: " + str(total_std))
-    return total_mean, total_std
-
 def visualize(RTs, output, P):
     batch_size = RTs.shape[0]
     img = P['roi_feature']
@@ -584,7 +565,7 @@ def farthest_rotation_sampling(dataset, N):
         distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_Rs[i]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs))
     return [dataset[idx] for idx in list(farthest_idx)]
 
-def projective_pool(masks, features, RT, K_crop, ftr_size):
+def carving_feature(masks, features, RT, K_crop, ftr_size):
     N_ref = features.shape[0]
     index_3d = torch.zeros([ftr_size, ftr_size, ftr_size, 3])
     idx = torch.arange(0, ftr_size)

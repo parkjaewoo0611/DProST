@@ -14,7 +14,7 @@ from pytorch3d.renderer import TexturesVertex
 from pytorch3d.ops import sample_points_from_meshes
 from utils.LM_parameter import LM_idx2radius
 
-
+### used to evaluate the ADD score and for ablation study (not in model)
 class MeshesLoader():
     def __init__(self, data_dir, obj_list, N_pts=100, **kwargs):
         self.device = torch.device("cuda:0")
@@ -25,7 +25,6 @@ class MeshesLoader():
         self.PTS_DICT = self.sample_pts(N_pts)
         self.FULL_PTS_DICT = self.full_pts()
         self.on_device()
-
 
     def load_meshes(self):
         mesh_adrs = sorted(glob.glob('%s/*.ply'%self.MESH_DIR))
@@ -46,7 +45,6 @@ class MeshesLoader():
                             textures=textures)
                 mesh_dict[mesh_index] = mesh.to(self.device)
         return mesh_dict, texture_dict
-
 
     def load_mesh_info(self):
         mesh_info_adrs = '%s/models_info.json'%self.MESH_DIR
