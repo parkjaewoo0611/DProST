@@ -1,14 +1,14 @@
 import torch
 import torch.nn.functional as F
 from pytorch3d.transforms import so3_relative_angle
-from utils.util import TCO_to_vxvyvz, dynamic_projective_stn, transform_pts
+from utils.util import RT_to_vxvyvz, dynamic_projective_stn, transform_pts
 
 # TODO: fix geodesic_R + translation loss
 def geodesic_vxvyvz_loss(gt_RT, output, K_crop, **kwargs):
     out_RT = output['RT']
     loss = so3_relative_angle(out_RT[:, :3, :3], gt_RT[:, :3, :3]).mean()
-    out_vxvyvz = TCO_to_vxvyvz(in_RT, out_RT, K_crop)
-    gt_vxvyvz = TCO_to_vxvyvz(in_RT, gt_RT, K_crop)
+    out_vxvyvz = RT_to_vxvyvz(in_RT, out_RT, K_crop)
+    gt_vxvyvz = RT_to_vxvyvz(in_RT, gt_RT, K_crop)
     vx_loss = F.l1_loss(out_vxvyvz[:, 0], gt_vxvyvz[:, 0])
     vy_loss = F.l1_loss(out_vxvyvz[:, 1], gt_vxvyvz[:, 1])
     vz_loss = F.l1_loss(out_vxvyvz[:, 2], gt_vxvyvz[:, 2])
