@@ -1,5 +1,26 @@
 import importlib
 from datetime import datetime
+import torch
+from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.summary import hparams
+
+class SummaryWriter(SummaryWriter):
+    def add_hparams(self, hparam_dict, metric_dict, mode, *args, **kwargs):
+        torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
+        if type(hparam_dict) is not dict or type(metric_dict) is not dict:
+            raise TypeError('hparam_dict and metric_dict should be dictionary.')
+        metric_dict = {f'hparams/{k}': v for k, v in metric_dict.items()} 
+        exp, ssi, sei = hparams(hparam_dict, metric_dict)
+
+        logdir = self._get_file_writer().get_logdir()
+        
+        with SummaryWriter(log_dir=logdir) as w_hp:
+            w_hp.file_writer.add_summary(exp)
+            w_hp.file_writer.add_summary(ssi)
+            if mode == 'test':
+                w_hp.file_writer.add_summary(sei)
+            for k, v in metric_dict.items():
+                w_hp.add_scalar(k, v)
 
 
 class TensorboardWriter():
@@ -14,7 +35,8 @@ class TensorboardWriter():
             succeeded = False
             for module in ["torch.utils.tensorboard", "tensorboardX"]:
                 try:
-                    self.writer = importlib.import_module(module).SummaryWriter(log_dir)
+                    # self.writer = importlib.import_module(module).SummaryWriter(log_dir)
+                    self.writer = SummaryWriter(log_dir)
                     succeeded = True
                     break
                 except ImportError:
@@ -32,10 +54,14 @@ class TensorboardWriter():
 
         self.tb_writer_ftns = {
             'add_scalar', 'add_scalars', 'add_image', 'add_images', 'add_audio',
-            'add_text', 'add_histogram', 'add_pr_curve', 'add_embedding'
+            'add_text', 'add_histogram', 'add_pr_curve', 'add_embedding', 'add_hparams',
         }
-        self.tag_mode_exceptions = {'add_histogram', 'add_embedding'}
+        self.tag_mode_exceptions = {'add_histogram', 'add_embedding', 'add_hparams'}
         self.timer = datetime.now()
+    
+    def set_mode(self, mode):
+        self.mode = mode
+        return self
 
     def set_step(self, step, mode='train'):
         self.mode = mode
@@ -59,10 +85,13 @@ class TensorboardWriter():
 
             def wrapper(tag, data, *args, **kwargs):
                 if add_data is not None:
-                    # add mode(train/valid) tag
-                    if name not in self.tag_mode_exceptions:
-                        tag = '{}/{}'.format(tag, self.mode)
-                    add_data(tag, data, self.step, *args, **kwargs)
+                    if name is "add_hparams":
+                        add_data(tag, data, self.mode, *args, **kwargs)
+                    else:
+                        # add mode(train/valid) tag
+                        if name not in self.tag_mode_exceptions:
+                            tag = '{}/{}'.format(tag, self.mode)
+                        add_data(tag, data, self.step, *args, **kwargs)
             return wrapper
         else:
             # default action for returning methods defined in this class, set_step() for instance.

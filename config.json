@@ -1,26 +1,26 @@
 {
     "name": "DProST",
     "gpu_id": "0",
+    "gpu_scheduler": false,
     "arch": {
         "type": "DProST",
         "args": {
             "img_ratio": 0.5,
             "ftr_size": 128,
-            "iteration": 3,
-            "model_name": "res34",
-            "occlusion": true,
-            "N_z": 100
+            "iteration": 2,
+            "model_name": "res18",
+            "N_z": 64
         }
     },
     "data_loader": {
         "type": "DataLoader",
         "args":{
             "data_dir": "../Dataset/LINEMOD",
-            "batch_size":2,
+            "batch_size":8,
             "obj_list" : [1],
             "reference_N": 8,
-            "is_pbr": true,
-            "is_syn": false,
+            "is_pbr": false,
+            "is_syn": true,
             "shuffle": true,
             "validation_split": 0.0,
             "test_as_valid": true,
@@ -42,20 +42,25 @@
         }
     },
     "loss": "grid_distance_loss",
-    "metrics": [
+    "valid_metrics": [
         "ADD_score_10"
+    ],
+    "test_metrics": [
+        "VSD_score", "MSSD_score", "MSPD_score", 
+        "ADD_score_02", "ADD_score_05", "ADD_score_10", 
+        "PROJ_score_02", "PROJ_score_05", "PROJ_score_10"
     ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
-            "step_size": 2000,
+            "step_size": 5000,
             "gamma": 0.1
         }
     },
     "trainer": {
-        "epochs": 10,
+        "epochs": 3000,
         "save_dir": "saved/",
-        "save_period": 5,
+        "save_period": 100,
         "verbosity": 2,
         "monitor": "max val_ADD_score_10",
         "early_stop": 1000,

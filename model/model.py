@@ -11,12 +11,9 @@ from utils.util import (
 )
 from utils.LM_parameter import FX, FY, PX, PY
 class LocalizationNetwork(nn.Module):
-    def __init__(self, model_name, occlusion):
+    def __init__(self, model_name):
         super().__init__()
-        if occlusion:
-            input_channel = 9
-        else:
-            input_channel = 6
+        input_channel = 6
 
         if model_name == 'res18':
             backbone = models.resnet18(pretrained=True)
@@ -55,7 +52,7 @@ class LocalizationNetwork(nn.Module):
         return result
 
 class DProST(BaseModel):
-    def __init__(self, img_ratio, ftr_size, iteration, model_name='res18', occlusion=True, pose_dim=9, N_z = 100, training=True, device='cpu'):
+    def __init__(self, img_ratio, ftr_size, iteration, model_name='res18', pose_dim=9, N_z = 100, training=True, device='cpu'):
         super(DProST, self).__init__()
         self.pose_dim = pose_dim
         self.device = device
@@ -76,11 +73,10 @@ class DProST(BaseModel):
 
         self.iteration = iteration
         self.training = training
-        self.occlusion = occlusion
 
         self.local_network = nn.ModuleDict()
         for i in range(1, self.iteration+1):
-            self.local_network[str(i)] = LocalizationNetwork(model_name, self.occlusion)
+            self.local_network[str(i)] = LocalizationNetwork(model_name)
 
         self.vxvyvz_W_scaler = torch.tensor([self.W, 1, 1]).unsqueeze(0).to(self.device)
         self.vxvyvz_H_scaler = torch.tensor([1, self.H, 1]).unsqueeze(0).to(self.device)
@@ -145,13 +141,9 @@ class DProST(BaseModel):
         pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
 
         ###### z-buffering
-        if self.occlusion:
-            pr_proj_min, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
-            pr_proj_max, _ = z_buffer_max(pr_ftr, pr_ftr_mask)
-            loc_input = torch.cat((pr_proj_min, pr_proj_max, roi_feature), 1)
-        else:
-            pr_proj, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
-            loc_input = torch.cat((pr_proj, roi_feature), 1)
+        pr_proj, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
+        loc_input = torch.cat((pr_proj, roi_feature), 1)
+
         ###### Localization Network 
         prediction = local_network(loc_input.detach())
         ###### update pose

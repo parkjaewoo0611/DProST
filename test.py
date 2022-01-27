@@ -18,9 +18,10 @@ from utils.util import visualize
 import matplotlib.pyplot as plt
 import csv
 import warnings
+from flatten_dict import flatten
 warnings.filterwarnings("ignore") 
 
-def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, best_path=None, **kwargs):
+def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, best_path=None, writer=None, metric_ftns=None, **kwargs):
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"]= config["gpu_id"]
 
@@ -66,6 +67,8 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
         criterion = getattr(module_loss, config['loss'])
         best_path = config.resume
 
+        metric_ftns = [getattr(module_metric, met) for met in config['test_metrics']]
+
     logger.info('Loading checkpoint: {} ...'.format(best_path))
     checkpoint = torch.load(best_path)
     state_dict = checkpoint['state_dict']
@@ -77,14 +80,8 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     # set iteration setting
     model.iteration = config["arch"]["args"]["iteration"]
 
-    # metric_fns = [getattr(module_metric, met) for met in config['metrics']]
-    metrics = ["VSD_score", "MSSD_score", "MSPD_score", 
-               "ADD_score_02", "ADD_score_05", "ADD_score_10", 
-               "PROJ_score_02", "PROJ_score_05", "PROJ_score_10"]
-    metric_fns = [getattr(module_metric, met) for met in metrics]
-
     total_loss = 0.0
-    total_metrics = torch.zeros(len(metric_fns))
+    total_metrics = torch.zeros(len(metric_ftns))
 
     ftr = {}
     ftr_mask = {}
@@ -95,7 +92,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
         ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(device), ftr_mask[obj_id].to(device)
 
     with torch.no_grad():
-        for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(data_loader)):
+        for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(data_loader, disable=config['gpu_scheduler'])):
             images, masks, bboxes, RTs = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device)
             ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
             ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
@@ -117,7 +114,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
                 'points' : P['vertexes'],
                 'depth_maps' : depths
             }
-            for i, met in enumerate(metric_fns):
+            for i, met in enumerate(metric_ftns):
                 total_metrics[i] += met(**M) * batch_size
 
             #### visualize images
@@ -129,9 +126,10 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     n_samples = len(data_loader.sampler)
     log = {'loss': total_loss / n_samples}
     log.update({
-        met.__name__: round(total_metrics[i].item() / n_samples * 100, 1) for i, met in enumerate(metric_fns)
+        met.__name__: round(total_metrics[i].item() / n_samples * 100, 1) for i, met in enumerate(metric_ftns)
     })
     logger.info(log)
+    
     result_csv_path = best_path.split('/')
     result_csv_path[1], result_csv_path[-1] = 'log', 'test_result.csv'
     result_csv_path = os.path.join(*result_csv_path)
@@ -139,6 +137,11 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
         metric_csv = csv.writer(csv_file)
         for k, v in log.items():
             metric_csv.writerow([k, v])
+
+    if not is_test:
+        hparams = flatten(config.config, reducer='path')
+        for k, v in hparams.items(): hparams[k]=f"{v}"
+        writer.add_hparams(hparams, log)
 
 
 if __name__ == '__main__':

@@ -8,9 +8,9 @@ class Trainer(BaseTrainer):
     """
     Trainer class
     """
-    def __init__(self, model, criterion, metric_ftns, optimizer, config, device,
+    def __init__(self, model, criterion, metric_ftns, test_metric_ftns, optimizer, config, device,
                  data_loader, mesh_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None):
-        super().__init__(model, criterion, metric_ftns, optimizer, config)
+        super().__init__(model, criterion, metric_ftns, test_metric_ftns, optimizer, config)
         self.config = config
         self.device = device
         self.data_loader = data_loader
@@ -65,14 +65,16 @@ class Trainer(BaseTrainer):
 
             self.optimizer.step()
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
-            self.train_metrics.update('loss', loss.detach().item())
+            self.train_metrics.update('loss', loss.detach().item(), write=True)
             
             if batch_idx % self.log_step == 0:
-                self.logger.debug('({}) Train Epoch: {} {} Loss: {:.6f}'.format(
+                self.logger.debug('({}) Train Epoch: {} {} Loss: {:.6f}  Best {}: {:.6f}'.format(
                     self.checkpoint_dir.name,
                     epoch,
                     self._progress(batch_idx),
-                    loss.detach().item()))   
+                    loss.detach().item(),
+                    self.mnt_metric,
+                    self.mnt_best))
 
             if batch_idx == self.len_epoch:
                 break
@@ -102,7 +104,7 @@ class Trainer(BaseTrainer):
         self.model.training = False
         self.valid_metrics.reset()
         with torch.no_grad():
-            for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(self.valid_data_loader)):
+            for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(self.valid_data_loader, disable=self.config['gpu_scheduler'])):
                 images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
                 ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
                 ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
@@ -114,7 +116,7 @@ class Trainer(BaseTrainer):
                 for idx in list(output.keys())[1:]:
                     loss += self.criterion(RTs, output[idx], **P)
                 self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
-                self.valid_metrics.update('loss', loss.detach().item())
+                self.valid_metrics.update('loss', loss.detach().item(), write=False)
                 M = {
                     'out_RT' : output[list(output.keys())[-1]]['RT'],
                     'gt_RT' : RTs,
@@ -123,7 +125,7 @@ class Trainer(BaseTrainer):
                     'depth_maps' : depths
                 }
                 for met in self.metric_ftns:
-                    self.valid_metrics.update(met.__name__, met(**M))
+                    self.valid_metrics.update(met.__name__, met(**M), write=False)
 
             c, g = visualize(RTs, output, P)
             self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
@@ -134,7 +136,8 @@ class Trainer(BaseTrainer):
         #     self.writer.add_histogram(name, p, bins='auto')
         for met in self.metric_ftns:
             v = self.valid_metrics.avg(met.__name__)
-            self.writer.add_scalar(met.__name__ + '/avg', v)
+            self.writer.add_scalar(met.__name__, v)
+
         return self.valid_metrics.result()
 
     def _progress(self, batch_idx):

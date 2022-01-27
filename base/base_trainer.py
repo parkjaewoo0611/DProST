@@ -3,18 +3,20 @@ from abc import abstractmethod
 from numpy import inf
 from logger import TensorboardWriter
 import os
+from flatten_dict import flatten
 
 class BaseTrainer:
     """
     Base class for all trainers
     """
-    def __init__(self, model, criterion, metric_ftns, optimizer, config):
+    def __init__(self, model, criterion, metric_ftns, test_metric_ftns, optimizer, config):
         self.config = config
         self.logger = config.get_logger('trainer', config['trainer']['verbosity'])
 
         self.model = model
         self.criterion = criterion
         self.metric_ftns = metric_ftns
+        self.test_metric_ftns = test_metric_ftns
         self.optimizer = optimizer
 
         cfg_trainer = config['trainer']
@@ -85,6 +87,14 @@ class BaseTrainer:
                     improved = False
 
                 if improved:
+                    result = {met.__name__: 0 for met in self.test_metric_ftns}
+                    for k, v in log.items():
+                        if 'val' in k:
+                            result[k[4:]] = v
+                    hparams = flatten(self.config.config, reducer='path')
+                    for k, v in hparams.items(): hparams[k]=f"{v}"
+                    self.writer.add_hparams(hparams, result)
+
                     self.mnt_best = log[self.mnt_metric]
                     not_improved_count = 0
                     best = True

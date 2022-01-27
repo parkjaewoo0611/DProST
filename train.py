@@ -25,8 +25,12 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 def main(config):
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
+    if not config['gpu_scheduler']:
+        os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
+    if config['gpu_scheduler']:
+        config['trainer']['verbosity'] = 0
+
     # prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config['gpu_id'])
     
@@ -52,21 +56,22 @@ def main(config):
 
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
-    logger.info(model)
+
     model = model.to(device)
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)
 
     # get function handles of loss and metrics
     criterion = getattr(module_loss, config['loss'])
-    metrics = [getattr(module_metric, met) for met in config['metrics']]
+    valid_metrics = [getattr(module_metric, met) for met in config['valid_metrics']]
+    test_metrics = [getattr(module_metric, met) for met in config['test_metrics']]
 
     # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
     lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
 
-    trainer = Trainer(model, criterion, metrics, optimizer,
+    trainer = Trainer(model, criterion, valid_metrics, test_metrics, optimizer,
                       config=config,
                       device=device,
                       data_loader=data_loader,
@@ -81,6 +86,8 @@ def main(config):
         "model": model,
         "criterion": criterion,
         "best_path": f"{trainer.best_dir}/model_best.pth",
+        "writer": trainer.writer.set_mode('test'),
+        "metric_ftns": test_metrics,
     }
     test.main(config, is_test=False, **test_dict)
 
@@ -99,15 +106,24 @@ if __name__ == '__main__':
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
-        CustomArgs(['--reference_N'], type=int, target='data_loader;args;reference_N'),
+        CustomArgs(['--gpu_scheduler'], type=bool, target='gpu_scheduler'),
+        CustomArgs(['--ftr_size'], type=int, target='arch;args;ftr_size'),
+        CustomArgs(['--iteration'], type=int, target='arch;args;iteration'),
+        CustomArgs(['--model_name'], type=str, target='arch;args;model_name'),
         CustomArgs(['--N_z'], type=int, target='arch;args;N_z'),
-        CustomArgs(['--occlusion'], type=bool, target='arch;args;occlusion'),
-        CustomArgs(['--is_pbr'], type=bool, target='data_loader;args;is_pbr'),
+
         CustomArgs(['--data_dir'], type=str, target='data_loader;args;data_dir'),
-        CustomArgs(['--mesh_dir'], type=str, target='mesh_loader;args;mesh_dir'),
-        CustomArgs(['--data_obj_list'], type=list, target='data_loader;args;obj_list'),
-        CustomArgs(['--mesh_obj_list'], type=list, target='mesh_loader;args;obj_list'),
+        CustomArgs(['--batch_size'], type=int, target='data_loader;args;batch_size'),
+        CustomArgs(['--obj_list'], type=list, target='data_loader;args;obj_list'),
+        CustomArgs(['--reference_N'], type=int, target='data_loader;args;reference_N'),
+        CustomArgs(['--is_pbr'], type=bool, target='data_loader;args;is_pbr'),
+        CustomArgs(['--is_syn'], type=bool, target='data_loader;args;is_syn'),
+        CustomArgs(['--FPS'], type=bool, target='data_loader;args;FPS'),
+
+        CustomArgs(['--lr'], type=float, target='optimizer;args;lr'),
         CustomArgs(['--loss'], type=str, target='loss'),
+        CustomArgs(['--lr_step_size'], type=int, target='lr_scheduler;args;step_size'),
+        CustomArgs(['--epochs'], type=int, target='trainer;epochs'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)
