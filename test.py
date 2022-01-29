@@ -21,7 +21,7 @@ import warnings
 from flatten_dict import flatten
 warnings.filterwarnings("ignore") 
 
-def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, best_path=None, writer=None, metric_ftns=None, **kwargs):
+def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, best_path=None, writer=None, metric_ftns=None, ftr=None, ftr_mask=None, **kwargs):
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"]= config["gpu_id"]
 
@@ -69,6 +69,13 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
 
         metric_ftns = [getattr(module_metric, met) for met in config['test_metrics']]
 
+        ftr = {}
+        ftr_mask = {}
+        obj_references = data_loader.select_reference()
+        for obj_id, references in obj_references.items():
+            ftr[obj_id], ftr_mask[obj_id] = model.build_ref(references)
+            ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(device), ftr_mask[obj_id].to(device)
+
     logger.info('Loading checkpoint: {} ...'.format(best_path))
     checkpoint = torch.load(best_path)
     state_dict = checkpoint['state_dict']
@@ -82,14 +89,6 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
 
     total_loss = 0.0
     total_metrics = torch.zeros(len(metric_ftns))
-
-    ftr = {}
-    ftr_mask = {}
-
-    obj_references = data_loader.select_reference()
-    for obj_id, references in obj_references.items():
-        ftr[obj_id], ftr_mask[obj_id] = model.build_ref(references)
-        ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(device), ftr_mask[obj_id].to(device)
 
     with torch.no_grad():
         for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(data_loader, disable=config['gpu_scheduler'])):
