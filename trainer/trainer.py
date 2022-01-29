@@ -8,7 +8,7 @@ class Trainer(BaseTrainer):
     """
     Trainer class
     """
-    def __init__(self, model, criterion, metric_ftns, test_metric_ftns, optimizer, config, device,
+    def __init__(self, model, criterion, metric_ftns, test_metric_ftns, optimizer, ftr, ftr_mask, config, device,
                  data_loader, mesh_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None):
         super().__init__(model, criterion, metric_ftns, test_metric_ftns, optimizer, config)
         self.config = config
@@ -30,14 +30,8 @@ class Trainer(BaseTrainer):
 
         self.train_metrics = MetricTracker('loss', writer=self.writer)
         self.valid_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
-
-        self.ftr = {}
-        self.ftr_mask = {}
-        obj_references = self.data_loader.select_reference()
-        for obj_id, references in obj_references.items():
-            print(f'Generating Reference Feature of obj {obj_id}')
-            self.ftr[obj_id], self.ftr_mask[obj_id] = self.model.build_ref(references)
-            self.ftr[obj_id], self.ftr_mask[obj_id] = self.ftr[obj_id].to(self.device), self.ftr_mask[obj_id].to(self.device)
+        self.ftr = ftr
+        self.ftr_mask = ftr_mask
 
     def _train_epoch(self, epoch):
         """

@@ -41,6 +41,10 @@ def main(config):
     config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
     config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
     config['arch']['args']['device'] = device
+    config['data_loader']['args']['batch_size'] = len(device_ids) * config['data_loader']['args']['batch_size']
+
+    # build model architecture, then print to console
+    model = config.init_obj('arch', module_arch )
 
     # setup data_loader instances
     data_loader = config.init_obj('data_loader', module_data)
@@ -54,13 +58,18 @@ def main(config):
     # mesh loader
     mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
-    # build model architecture, then print to console
-    model = config.init_obj('arch', module_arch )
-
-    model = model.to(device)
+    ftr = {}
+    ftr_mask = {}
+    obj_references = data_loader.select_reference()
+    for obj_id, references in obj_references.items():
+        print(f'Generating Reference Feature of obj {obj_id}')
+        ftr[obj_id], ftr_mask[obj_id] = model.build_ref(references)
+        ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(device), ftr_mask[obj_id].to(device)
+    
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)
-
+    model = model.to(device)
+    
     # get function handles of loss and metrics
     criterion = getattr(module_loss, config['loss'])
     valid_metrics = [getattr(module_metric, met) for met in config['valid_metrics']]
@@ -72,6 +81,7 @@ def main(config):
     lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
 
     trainer = Trainer(model, criterion, valid_metrics, test_metrics, optimizer,
+                      ftr, ftr_mask,
                       config=config,
                       device=device,
                       data_loader=data_loader,

@@ -141,6 +141,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     if not is_test:
         hparams = flatten(config.config, reducer='path')
         for k, v in hparams.items(): hparams[k]=f"{v}"
+        log['saved_epoch'] = 'test'
         writer.add_hparams(hparams, log)
 
 

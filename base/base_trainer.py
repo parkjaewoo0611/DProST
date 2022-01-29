@@ -93,6 +93,7 @@ class BaseTrainer:
                             result[k[4:]] = v
                     hparams = flatten(self.config.config, reducer='path')
                     for k, v in hparams.items(): hparams[k]=f"{v}"
+                    result['saved_epoch'] = epoch
                     self.writer.add_hparams(hparams, result)
 
                     self.mnt_best = log[self.mnt_metric]
