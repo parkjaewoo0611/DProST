@@ -99,7 +99,7 @@ def main(config):
         "writer": trainer.writer.set_mode('test'),
         "metric_ftns": test_metrics,
         "ftr": ftr,
-        "ftr_mask": ftr_mask,
+        "ftr_mask": ftr_mask
     }
     test.main(config, is_test=False, **test_dict)
 
