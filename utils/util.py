@@ -431,10 +431,19 @@ def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
 def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
     ###### grid pushing
     obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
-    grid_proj_origin = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
+    cam_grid = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
     ###### Projective Grid transform
-    pr_grid_proj = grid_transformer(grid_proj_origin, RT)
-    return pr_grid_proj, obj_dist
+    obj_grid = grid_transformer(cam_grid, RT)
+    return obj_grid, obj_dist
+
+def obj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
+    ####### Dynamic Projective STN
+    obj_grid, obj_dist = dynamic_projective_stn(RT, grid_crop, coeffi_crop)
+    ####### sample ftr to 2D
+    NDC_ftr, NDC_ftr_mask = grid_sampler(ftr, ftr_mask, obj_grid)
+    ###### z-buffering
+    proj_img, proj_index = z_buffer_min(NDC_ftr, NDC_ftr_mask)
+    return proj_img
 
 def grid_sampler(ftr, ftr_mask, grid):
     ###### Grid Sampler  
@@ -456,14 +465,6 @@ def z_buffer_min(ftr, mask):
     img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
     return img, index
 
-def proj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
-    ####### Dynamic Projective STN
-    pr_grid_proj, obj_dist = dynamic_projective_stn(RT, grid_crop, coeffi_crop)
-    ####### sample ftr to 2D
-    pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
-    ###### z-buffering
-    pr_proj, pr_proj_indx = z_buffer_min(pr_ftr, pr_ftr_mask)
-    return pr_proj
 
 def contour(render, img, is_label):
     if is_label: 
@@ -481,10 +482,10 @@ def contour(render, img, is_label):
 def visualize(RTs, output, P):
     batch_size = RTs.shape[0]
     img = P['roi_feature']
-    lab = proj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+    lab = obj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
     lev = []
     for idx in list(output.keys()):
-        lev.append(proj_visualize(output[idx]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask']))
+        lev.append(obj_visualize(output[idx]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask']))
     lev = torch.cat(lev, 0)
     img_g = make_grid(img, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
     lab_g = make_grid(lab, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()

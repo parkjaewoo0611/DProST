@@ -41,7 +41,7 @@ class Trainer(BaseTrainer):
         :return: A log that contains average loss and metric in this epoch.
         """
         self.model.train()
-        self.model.training = True
+        self.model.mode = 'train'
 
         for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
             images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
@@ -50,8 +50,9 @@ class Trainer(BaseTrainer):
 
             self.optimizer.zero_grad()
             output, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
-            P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])     # Only used to compare PM loss 
-
+            P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
+            if self.criterion.__name__ == 'point_matching_loss':
+                P['full_vertexes'] = torch.stack([self.mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
             loss = 0
             for idx in list(output.keys())[1:]:
                 loss += self.criterion(RTs, output[idx], **P)
@@ -60,7 +61,7 @@ class Trainer(BaseTrainer):
             self.optimizer.step()
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
             self.train_metrics.update('loss', loss.detach().item(), write=True)
-            
+
             if batch_idx % self.log_step == 0:
                 self.logger.debug('({}) Train Epoch: {} {} Loss: {:.6f}  Best {}: {:.6f}'.format(
                     self.checkpoint_dir.name,
@@ -72,7 +73,6 @@ class Trainer(BaseTrainer):
 
             if batch_idx == self.len_epoch:
                 break
-
         log = self.train_metrics.result()
 
         if self.do_validation and epoch % self.save_period == 0 :
@@ -95,7 +95,7 @@ class Trainer(BaseTrainer):
         :return: A log that contains information about validation
         """
         self.model.eval()
-        self.model.training = False
+        self.model.mode = 'valid'
         self.valid_metrics.reset()
         with torch.no_grad():
             for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(self.valid_data_loader, disable=self.config['gpu_scheduler'])):
@@ -105,7 +105,9 @@ class Trainer(BaseTrainer):
                 
                 output, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
                 P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
-                
+                if self.criterion.__name__ == 'point_matching_loss':
+                    P['full_vertexes'] = torch.stack([self.mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
+
                 loss = 0
                 for idx in list(output.keys())[1:]:
                     loss += self.criterion(RTs, output[idx], **P)

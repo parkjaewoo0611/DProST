@@ -1,1 +1,27 @@
-python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 64  --data_dir ../Dataset/OCCLUSION --batch_size 8 --obj_list 1 5 6 8 9 10 11 12 --reference_N 8  --is_pbr false --is_syn true  --FPS true --lr 0.0001 --loss grid_distance_loss --lr_step_size 4000 --epochs 5000
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+
+python train.py --gpu_scheduler true --ftr_size 256 --iteration 3 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 2
+python train.py --gpu_scheduler true --ftr_size 64  --iteration 3 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 32  --iteration 3 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 16  --iteration 3 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 4 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 2 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 1 --model_name res34 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res50 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res18 --N_z 64   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 128  --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 3
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 32   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 16   --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 8    --reference_N 8   --FPS true  --loss grid_matching_loss  --batch_size 6
+
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 64   --reference_N 16  --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 64   --reference_N 4   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 64   --reference_N 2   --FPS true  --loss grid_matching_loss  --batch_size 6
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 64   --reference_N 1   --FPS true  --loss grid_matching_loss  --batch_size 6
+
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 64   --reference_N 8   --FPS false --loss grid_matching_loss  --batch_size 6
+
+python train.py --gpu_scheduler true --ftr_size 128 --iteration 3 --model_name res34 --N_z 16   --reference_N 8   --FPS true  --loss point_matching_loss --batch_size 5

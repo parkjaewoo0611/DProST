@@ -52,10 +52,11 @@ class LocalizationNetwork(nn.Module):
         return result
 
 class DProST(BaseModel):
-    def __init__(self, img_ratio, ftr_size, iteration, model_name='res18', pose_dim=9, N_z = 100, training=True, device='cpu'):
+    def __init__(self, img_ratio, ftr_size, iteration, model_name='res34', pose_dim=9, N_z = 64, mode='train', device='cpu'):
         super(DProST, self).__init__()
         self.pose_dim = pose_dim
         self.device = device
+
         # Projective STN default grid with camera parameter
         self.H = int(480 * img_ratio)
         self.W = int(640 * img_ratio)
@@ -72,7 +73,7 @@ class DProST(BaseModel):
         self.ftr_size = ftr_size
 
         self.iteration = iteration
-        self.training = training
+        self.mode = mode
 
         self.local_network = nn.ModuleDict()
         for i in range(1, self.iteration+1):
@@ -95,7 +96,7 @@ class DProST(BaseModel):
         return ftr, ftr_mask
 
 
-    def forward(self, images, ftr, ftr_mask, bboxes, obj_ids, gt_RT):
+    def forward(self, images, ftr, ftr_mask, bboxes, obj_ids, gt_RT=None):
         bsz = images.shape[0]
         K_batch = self.K.repeat(bsz, 1, 1).to(images.device)
         projstn_grid = self.projstn_grid.repeat(bsz, 1, 1, 1, 1).to(images.device)
@@ -108,7 +109,7 @@ class DProST(BaseModel):
         pred = {}
 
         ######################## initial pose estimate ##############################
-        if self.training:
+        if self.mode == 'train':
             bboxes = bbox_add_noise(bboxes, std_rate=0.1)
         pred[0] = {'RT': RT_from_boxes(bboxes, K_batch).detach()}  
 
@@ -130,25 +131,28 @@ class DProST(BaseModel):
                 P['grid_crop'], 
                 P['coeffi_crop'], 
                 P['K_crop'])
-        pred[self.iteration]['grid'], pred[self.iteration]['dist'] = dynamic_projective_stn(pred[self.iteration]['RT'], P['grid_crop'], P['coeffi_crop'])
+
+        if self.mode == 'train' or 'valid':
+            pred[self.iteration]['grid'], pred[self.iteration]['dist'] = dynamic_projective_stn(pred[self.iteration]['RT'], P['grid_crop'], P['coeffi_crop'])
+            P['gt_grid'], P['gt_dist'] = dynamic_projective_stn(gt_RT, P['grid_crop'], P['coeffi_crop'])
         return pred, P
 
 
     def projective_pose(self, local_network, previous_RT, ftr, ftr_mask, roi_feature, grid_crop, coeffi_crop, K_crop):
         ###### Dynamic Projective STN
-        pr_grid_proj, obj_dist = dynamic_projective_stn(previous_RT, grid_crop, coeffi_crop)
+        obj_grid, obj_dist = dynamic_projective_stn(previous_RT, grid_crop, coeffi_crop)
         ####### sample ftr to 3D feature
-        pr_ftr, pr_ftr_mask = grid_sampler(ftr, ftr_mask, pr_grid_proj)
+        NDC_ftr, NDC_ftr_mask = grid_sampler(ftr, ftr_mask, obj_grid)
 
         ###### z-buffering
-        pr_proj, _ = z_buffer_min(pr_ftr, pr_ftr_mask)
-        loc_input = torch.cat((pr_proj, roi_feature), 1)
+        proj_img, _ = z_buffer_min(NDC_ftr, NDC_ftr_mask)
+        loc_input = torch.cat((proj_img, roi_feature), 1)
 
         ###### Localization Network 
         prediction = local_network(loc_input.detach())
         ###### update pose
         next_RT = self.update_pose(previous_RT, K_crop, prediction)
-        return {'RT': next_RT}, pr_grid_proj, obj_dist
+        return {'RT': next_RT}, obj_grid, obj_dist
 
 
     def update_pose(self, TCO, K_crop, pose_outputs):

@@ -21,7 +21,8 @@ import warnings
 from flatten_dict import flatten
 warnings.filterwarnings("ignore") 
 
-def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, best_path=None, writer=None, metric_ftns=None, ftr=None, ftr_mask=None, **kwargs):
+def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, 
+         best_path=None, writer=None, metric_ftns=None, ftr=None, ftr_mask=None, **kwargs):
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"]= config["gpu_id"]
 
@@ -82,12 +83,11 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     model.load_state_dict(state_dict)
     model = model.to(device)
     model.eval()
-    model.training = False
+    model.mode = 'test'
 
     # set iteration setting
     model.iteration = config["arch"]["args"]["iteration"]
 
-    total_loss = 0.0
     total_metrics = torch.zeros(len(metric_ftns))
 
     with torch.no_grad():
@@ -96,16 +96,10 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
             ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
             ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
-            output, P = model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
+            output, P = model(images, ftrs, ftr_masks, bboxes, obj_ids)
             P['vertexes'] = torch.stack([mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
 
             # computing loss, metrics on test set          
-            loss = 0
-            for idx in list(output.keys())[1:]:
-                loss += criterion(RTs, output[idx], **P)
-
-            batch_size = images.shape[0]
-            total_loss += loss.detach().item() * batch_size
             M = {
                 'out_RT' : output[list(output.keys())[-1]]['RT'],
                 'gt_RT' : RTs,
@@ -113,6 +107,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
                 'points' : P['vertexes'],
                 'depth_maps' : depths
             }
+            batch_size = images.shape[0]
             for i, met in enumerate(metric_ftns):
                 total_metrics[i] += met(**M) * batch_size
 
@@ -123,7 +118,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
 
     n_samples = len(data_loader.sampler)
-    log = {'loss': total_loss / n_samples}
+    log = {'loss': 'test'}
     log.update({
         met.__name__: round(total_metrics[i].item() / n_samples * 100, 1) for i, met in enumerate(metric_ftns)
     })
