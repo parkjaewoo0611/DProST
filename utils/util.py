@@ -82,6 +82,7 @@ from torchvision.ops import roi_align
 from torchvision.utils import make_grid
 import cv2
 from PIL import Image
+from flatten_dict import flatten
 
 def R_T_to_RT(R, T):
     if R.dtype == np.float64:
@@ -581,3 +582,18 @@ def resize_short_edge(im, target_size, max_size, stride=0, interpolation=cv2.INT
             return padded_im, im_scale
         else:
             return padded_im
+
+########################### hparams_function #########################
+def hparams_key(config):
+    required_hparams = [
+        'ftr_size', 'iteration', 'model_name', 'N_z', 'data_dir',
+        'batch_size', 'obj_list', 'reference_N', 'is_pbr', 'is_syn', 
+        'FPS', 'loss', 'step_size', 'epochs'
+    ]
+    hparams = {}
+    config = flatten(config, reducer='path')
+    for k, v in config.items():
+        name = k.split('/')[-1]
+        if name in required_hparams: 
+            hparams[name]=f"{v}"
+    return hparams

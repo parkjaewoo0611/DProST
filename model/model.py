@@ -132,7 +132,7 @@ class DProST(BaseModel):
                 P['coeffi_crop'], 
                 P['K_crop'])
 
-        if self.mode == 'train' or 'valid':
+        if self.mode == 'train' or self.mode == 'valid':
             pred[self.iteration]['grid'], pred[self.iteration]['dist'] = dynamic_projective_stn(pred[self.iteration]['RT'], P['grid_crop'], P['coeffi_crop'])
             P['gt_grid'], P['gt_dist'] = dynamic_projective_stn(gt_RT, P['grid_crop'], P['coeffi_crop'])
         return pred, P

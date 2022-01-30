@@ -18,7 +18,8 @@ from utils.util import visualize
 import matplotlib.pyplot as plt
 import csv
 import warnings
-from flatten_dict import flatten
+from utils.util import hparams_key
+
 warnings.filterwarnings("ignore") 
 
 def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, 
@@ -133,9 +134,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
             metric_csv.writerow([k, v])
 
     if not is_test:
-        hparams = flatten(config.config, reducer='path')
-        for k, v in hparams.items(): hparams[k]=f"{v}"
-        log['saved_epoch'] = 'test'
+        hparams = hparams_key(config.config)
         writer.add_hparams(hparams, log)
 
 

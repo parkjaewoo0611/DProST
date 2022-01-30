@@ -3,8 +3,7 @@ from abc import abstractmethod
 from numpy import inf
 from logger import TensorboardWriter
 import os
-from flatten_dict import flatten
-
+from utils.util import hparams_key
 class BaseTrainer:
     """
     Base class for all trainers
@@ -16,7 +15,6 @@ class BaseTrainer:
         self.model = model
         self.criterion = criterion
         self.metric_ftns = metric_ftns
-        self.test_metric_ftns = test_metric_ftns
         self.optimizer = optimizer
 
         cfg_trainer = config['trainer']
@@ -41,7 +39,10 @@ class BaseTrainer:
 
         self.checkpoint_dir = config.save_dir
         self.best_dir = config.save_dir
-
+        self.hparams = hparams_key(self.config.config)
+        self.hparams_result = {met.__name__: 0 for met in test_metric_ftns}
+        self.hparams_result['current_epoch'] = 0
+        self.hparams_result['best_epoch'] = 0
         # setup visualization writer instance                
         self.writer = TensorboardWriter(config.log_dir, self.logger, cfg_trainer['tensorboard'])
 
@@ -68,6 +69,9 @@ class BaseTrainer:
             # save logged informations into log dict
             log = {'epoch': epoch}
             log.update(result)
+            
+            self.hparams_result['saved_epoch'] = epoch
+            self.writer.add_hparams(self.hparams, self.hparams_result)
 
             # print logged informations to the screen
             for key, value in log.items():
@@ -87,14 +91,11 @@ class BaseTrainer:
                     improved = False
 
                 if improved:
-                    result = {met.__name__: 0 for met in self.test_metric_ftns}
                     for k, v in log.items():
                         if 'val' in k:
-                            result[k[4:]] = v
-                    hparams = flatten(self.config.config, reducer='path')
-                    for k, v in hparams.items(): hparams[k]=f"{v}"
-                    result['saved_epoch'] = epoch
-                    self.writer.add_hparams(hparams, result)
+                            self.hparams_result[k[4:]] = v
+                    self.hparams_result['best_epoch'] = epoch
+                    self.writer.add_hparams(self.hparams, self.hparams_result)
 
                     self.mnt_best = log[self.mnt_metric]
                     not_improved_count = 0
