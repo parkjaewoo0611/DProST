@@ -70,7 +70,7 @@ class BaseTrainer:
             log = {'epoch': epoch}
             log.update(result)
             
-            self.hparams_result['saved_epoch'] = epoch
+            self.hparams_result['current_epoch'] = epoch
             self.writer.add_hparams(self.hparams, self.hparams_result)
 
             # print logged informations to the screen

@@ -119,7 +119,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
 
     n_samples = len(data_loader.sampler)
-    log = {'loss': 'test'}
+    log = {}
     log.update({
         met.__name__: round(total_metrics[i].item() / n_samples * 100, 1) for i, met in enumerate(metric_ftns)
     })

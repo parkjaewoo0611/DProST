@@ -52,7 +52,7 @@ class LocalizationNetwork(nn.Module):
         return result
 
 class DProST(BaseModel):
-    def __init__(self, img_ratio, ftr_size, iteration, model_name='res34', pose_dim=9, N_z = 64, mode='train', device='cpu'):
+    def __init__(self, img_ratio, ftr_size, img_size, iteration, model_name='res34', pose_dim=9, N_z = 64, mode='train', device='cpu'):
         super(DProST, self).__init__()
         self.pose_dim = pose_dim
         self.device = device
@@ -71,6 +71,7 @@ class DProST(BaseModel):
         self.projstn_grid, self.coefficient = projstn_grid.to(self.device), coefficient.to(self.device)
 
         self.ftr_size = ftr_size
+        self.img_size = img_size
 
         self.iteration = iteration
         self.mode = mode
@@ -115,10 +116,10 @@ class DProST(BaseModel):
 
         ####################### DProST grid cropping #################################
         ###### grid zoom-in 
-        P['grid_crop'], P['coeffi_crop'], P['K_crop'], P['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.ftr_size, self.ftr_size))
+        P['grid_crop'], P['coeffi_crop'], P['K_crop'], P['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.img_size, self.img_size))
         ####################### crop from image ######################################
         ####### get RoI feature from image    
-        P['roi_feature'] = get_roi_feature(P['bboxes_crop'], images, (self.H, self.W), (self.ftr_size, self.ftr_size))
+        P['roi_feature'] = get_roi_feature(P['bboxes_crop'], images, (self.H, self.W), (self.img_size, self.img_size))
         ####################### DProST grid push & transform #########################
         ##### get ftr feature
         for i in range(1, self.iteration+1):
