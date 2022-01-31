@@ -141,11 +141,11 @@ class DataLoader(BaseDataLoader):
                 bboxes.append(torch.tensor(bbox, dtype=torch.float32))
 
         images = torch.stack(images)
+        obj_ids = torch.stack(obj_ids)
+        RTs = torch.stack(RTs)
         depths = torch.stack(depths)
         masks = torch.stack(masks)
-        obj_ids = torch.stack(obj_ids)
         bboxes = torch.stack(bboxes)
-        RTs = torch.stack(RTs)
         return images, masks, depths, obj_ids, bboxes, RTs
 
     def load_img(self, path):

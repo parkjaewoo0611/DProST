@@ -25,7 +25,7 @@
             "shuffle": true,
             "validation_split": 0.0,
             "test_as_valid": true,
-            "num_workers": 4,
+            "num_workers": 8,
             "FPS": true
         }
     },
