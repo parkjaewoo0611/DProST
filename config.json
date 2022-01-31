@@ -8,7 +8,7 @@
             "img_ratio": 0.5,
             "img_size": 128,
             "ftr_size": 128,
-            "iteration": 3,
+            "iteration": 2,
             "model_name": "res34",
             "N_z": 64
         }
@@ -20,8 +20,8 @@
             "batch_size": 6,
             "obj_list" : [1],
             "reference_N": 8,
-            "is_pbr": false,
-            "is_syn": true,
+            "is_pbr": true,
+            "is_syn": false,
             "shuffle": true,
             "validation_split": 0.0,
             "test_as_valid": true,
@@ -54,12 +54,12 @@
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
-            "step_size": 4000,
+            "step_size": 2000,
             "gamma": 0.1
         }
     },
     "trainer": {
-        "epochs": 5000,
+        "epochs": 3000,
         "save_dir": "saved/",
         "save_period": 100,
         "verbosity": 2,
