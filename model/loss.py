@@ -21,6 +21,16 @@ def grid_matching_loss(gt_RT, output, gt_grid, gt_dist, **kwargs):
     loss += F.l1_loss(pr_dist, gt_dist.detach())
     return loss
 
+def grid_matching_loss_without_distance(gt_RT, output, gt_grid, **kwargs):
+    pr_grid = output['grid']
+    loss = torch.sqrt(F.mse_loss(pr_grid, gt_grid.detach(), reduce=False).sum(-1) + 1e-9).mean()
+    return loss
+
+def image_matching_loss(gt_RT, output, gt_grid, **kwargs):
+    pr_grid = output['grid']
+    loss = torch.sqrt(F.mse_loss(pr_grid, gt_grid.detach(), reduce=False).sum(-1) + 1e-9).mean()
+    return loss
+
 def point_matching_loss(gt_RT, output, full_vertexes, **kwargs):
     out_RT = output['RT']
     pr_pts = transform_pts(out_RT, full_vertexes)
