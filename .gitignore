@@ -109,6 +109,7 @@ input/
 saved/
 datasets/
 CVPR_saved/
+gpu_commands.txt
 
 # editor, os cache directory
 .vscode/
