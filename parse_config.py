@@ -7,6 +7,7 @@ from datetime import datetime
 from logger import setup_logging
 from utils import read_json, write_json
 import argparse
+import random
 
 class ConfigParser:
     def __init__(self, config, resume=None, modification=None, run_id=None):
@@ -28,6 +29,7 @@ class ConfigParser:
         exper_name = self.config['name']
         if run_id is None: # use timestamp as default run-id
             run_id = datetime.now().strftime(r'%m%d_%H%M%S.%f')
+            run_id = f'{run_id}.{str(random.random())[-3:]}'
         self._save_dir = save_dir / 'models' / exper_name / run_id
         self._log_dir = save_dir / 'log' / exper_name / run_id
 
