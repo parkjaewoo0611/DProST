@@ -1,6 +1,12 @@
 import numpy as np
 
-YCBV_idx2class = {
+import sys
+sys.path.append('utils')
+sys.path.append('utils/bop_toolkit')
+from utils.bop_toolkit.bop_toolkit_lib.inout import load_json
+from utils.bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
+
+idx2class = {
     1 : "002_master_chef_can",
     2 : "003_cracker_box",
     3 : "004_sugar_box",
@@ -24,7 +30,7 @@ YCBV_idx2class = {
     21 : "061_foam_brick"
 }
 
-YCBV_class2idx = {
+class2idx = {
     "002_master_chef_can" : 1,
     "003_cracker_box" : 2,
     '004_sugar_box' : 3,
@@ -48,7 +54,7 @@ YCBV_class2idx = {
     "061_foam_brick" : 21
 }
 
-YCBV_idx2symmetry = {
+idx2symmetry = {
     1 : "sym_dis",
     2 : "none",
     3 : "none",
@@ -72,120 +78,63 @@ YCBV_idx2symmetry = {
     21 : "sym_dis"
 }
 
-YCBV_idx2syms= {
-    1 : [{
-          "R": np.array([[-1, -4.31991e-014, 0], 
-                         [4.31991e-014,  -1, 0],
-                         [0,              0, 1]]),
-          "t": np.array([[0], [0], [0]])
-    }],
-    2 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    3 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    4 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    5 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    6 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    7 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    8 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    9 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    10 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    11 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    12 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    13 : [{
-          "R": np.array([[-1, -4.31991e-014, 0], 
-                         [4.31991e-014,  -1, 0],
-                         [0,              0, 1]]),
-          "t": np.array([[0], [0], [0]])
-    }],
-    14 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-    15 : [{"R": np.eye(3, 3),
-          "t": np.zeros([3, 1])
-    }],
-}
-
-LM_idx2diameter = {
-    1 : 102.099,
-    2 : 247.506,
-    #3 : 167.355,
-    4 : 172.492,
-    5 : 201.404,
-    6 : 154.546,
-    #7 : 124.264,
-    8 : 261.472,
-    9 : 108.999,
-    10 : 164.628,
-    11 : 175.889,
-    12 : 145.543,
-    13 : 278.078,
-    14 : 282.601,
-    15 : 212.358,
-}
-
-LM_idx2radius = {
-    1 : 59.5355,
-    2 : 140.3643,
-    4 : 99.6404,
-    5 : 110.6762,
-    6 : 84.6778,
-    8 : 145.8172,
-    9 : 63.9980,
-    10 : 82.9911,
-    11 : 91.8091,
-    12 : 75.5216,
-    13 : 145.0773,
-    14 : 148.1368,
-    15 : 109.9537,
-}
-
-## radius of DeepIM/data/LINEMOD_6D/LM6d_converted/LM6d_refine/models/**/textured.obj
-LM_idx2synradius = {
-    1 : 0.0595,
-    2 : 0.1404,
-    4 : 0.0996,        
-    5 : 0.1107,         
-    6 : 0.0847,         
-    8 : 0.1458,
-    9 : 0.0640,         
-    10 : 0.0830,
-    11 : 0.0918,        
-    12 : 0.0755,        
-    13 : 0.1451,        
-    14 : 0.1481,
-    15 : 0.1100         
+idx2radius = {
+    1 : 86.1740,
+    2 : 135.6663,
+    3 : 99.6637,
+    4 : 60.8266,
+    5 : 103.6818,
+    6 : 45.8036,
+    7 : 72.0897,
+    8 : 57.4040,
+    9 : 66.3194,
+    10 : 103.9851,
+    11 : 136.4676,
+    12 : 133.7827,
+    13 : 84.7634,
+    14 : 70.4044,
+    15 : 122.1458,
+    16 : 119.1654,
+    17 : 110.5286,
+    18 : 60.9245,
+    19 : 99.6208,
+    20 : 128.6310,
+    21 : 52.1546,
 }
 
 
-FX = 572.4114
-FY = 573.57043
-PX = 325.2611
-PY = 242.04899
+obj_path = '../Dataset/YCBV/models'
+mesh_info_path = f'{obj_path}/models_info.json'
+mesh_infos = load_json(mesh_info_path)
 
-K = np.array([[FX,  0, PX],
-              [ 0, FY, PY],
-              [ 0,  0,  1]])
+idx2syms = {}
+idx2diameter = {}
+for idx in list(mesh_infos.keys()):
+      mesh_info = mesh_infos[idx]
+      idx2syms[int(idx)] = get_symmetry_transformations(mesh_info, max_sym_disc_step = 1/8)
+      idx2diameter[int(idx)] = mesh_info['diameter']
+
+# cmu camera intrinsic
+CMU = {
+      'fx': 1077.836,
+      'fy': 1078.189,
+      'px': 323.7872,
+      'py': 279.6921,
+}
+CMU['K'] = np.array([[CMU['fx'],  0,         CMU['px']],
+                     [0,          CMU['fy'], CMU['py']],
+                     [0,          0,         1]])
+                     
+# uw camera intrinsic
+UW = {
+      'fx': 1066.778,
+      'fy': 1067.487,
+      'px': 312.9869,
+      'py': 241.3109,
+}
+UW['K'] = np.array([[UW['fx'],  0,        UW['px']],
+                    [0,         UW['fy'], UW['py']],
+                    [0,         0,        1]])
 
 # parameters for metric function
 from utils.bop_toolkit.bop_toolkit_lib import renderer
@@ -199,8 +148,8 @@ VSD_DELTA = 15
 VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
 VSD_NORMALIZED_BY_DIAMETER = True
 VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
-obj_path = '../Dataset/LINEMOD/models'
-for obj_id in LM_idx2class.keys():
+
+for obj_id in idx2class.keys():
     VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
 
 MSSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]

@@ -77,7 +77,7 @@ import torch
 import torchvision
 import numpy as np
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
-from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle
+from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle, Transform3d
 from torchvision.ops import roi_align
 from torchvision.utils import make_grid
 import cv2
@@ -381,46 +381,25 @@ def ProST_grid(H, W, f, cx, cy, rc_pts):
     return ProST_grid.unsqueeze(0), normalized_XYZ.unsqueeze(0)
 
 # for change RT to pytorch3d style
-R_comp = torch.eye(4, 4)[None]
-R_comp[0, 0, 0] = -1
-R_comp[0, 1, 1] = -1
-R_comp.requires_grad = True
+
 def grid_transformer(grid, RT):
     ###### Projective Grid Generator
     grid_shape = grid.shape
     grid = grid.flatten(1, 3)            
-    RT = torch.bmm(R_comp.repeat(RT.shape[0], 1, 1).to(RT.device), RT)
-    RT_inv = invert_T(RT)
-    transformed_grid = transform_pts(RT_inv, grid).reshape(grid_shape)
+    transformed_grid = transform_pts(RT, grid, inverse=True).reshape(grid_shape)
     return transformed_grid
 
-def transform_pts(T, pts):
-    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
-    bsz = T.shape[0]
-    n_pts = pts.shape[1]
-    assert pts.shape == (bsz, n_pts, 3)
-    if T.dim() == 4:
-        pts = pts.unsqueeze(1)
-        assert T.shape[-2:] == (4, 4)
-    elif T.dim() == 3:
-        assert T.shape == (bsz, 4, 4)
-    else:
-        raise ValueError('Unsupported shape for T', T.shape)
-    pts = pts.unsqueeze(-1)
-    T = T.unsqueeze(-3)
-    pts_transformed = T[..., :3, :3] @ pts + T[..., :3, [-1]]
-    return pts_transformed.squeeze(-1)
-
-def invert_T(T):
-    ### from https://github.com/ylabbe/cosypose/cosypose/lib3d/transform.py
-    R = T[..., :3, :3]
-    t = T[..., :3, [-1]]
-    R_inv = R.transpose(-2, -1)
-    t_inv = - R_inv @ t
-    T_inv = T.clone()
-    T_inv[..., :3, :3] = R_inv
-    T_inv[..., :3, [-1]] = t_inv
-    return T_inv
+R_comp = torch.eye(4, 4)[None]
+R_comp[0, 0, 0] = -1
+R_comp[0, 1, 1] = -1
+R_comp.requires_grad = True
+def transform_pts(RT, pts, inverse=False):
+    RT = torch.bmm(R_comp.repeat(RT.shape[0], 1, 1).to(RT.device), RT).permute(0, 2, 1) # pytorch style RT
+    t = Transform3d(matrix=RT)
+    if inverse:
+        t = t.inverse()
+    pts_transformed = t.transform_points(pts)
+    return pts_transformed
 
 def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
     bboxes_img_feature = bboxes_crop * (torch.tensor(img_feature.shape[-2:])/torch.tensor(original_size)).unsqueeze(0).repeat(1, 2).to(bboxes_crop.device)
@@ -429,14 +408,6 @@ def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
     roi_feature = roi_align(img_feature, bboxes_img_feature, output_size=output_size, sampling_ratio=4)
     return roi_feature
 
-def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
-    ###### grid pushing
-    obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
-    cam_grid = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)       
-    ###### Projective Grid transform
-    obj_grid = grid_transformer(cam_grid, RT)
-    return obj_grid, obj_dist
-
 def obj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
     ####### Dynamic Projective STN
     obj_grid, obj_dist = dynamic_projective_stn(RT, grid_crop, coeffi_crop)
@@ -444,7 +415,15 @@ def obj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
     NDC_ftr, NDC_ftr_mask = grid_sampler(ftr, ftr_mask, obj_grid)
     ###### z-buffering
     proj_img, proj_index = z_buffer_min(NDC_ftr, NDC_ftr_mask)
-    return proj_img
+    return proj_img, obj_dist, obj_grid
+
+def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
+    ###### grid pushing
+    obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
+    cam_grid = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+    ###### Projective Grid transform
+    obj_grid = grid_transformer(cam_grid, RT)
+    return obj_grid, obj_dist
 
 def grid_sampler(ftr, ftr_mask, grid):
     ###### Grid Sampler  
@@ -483,10 +462,11 @@ def contour(render, img, is_label):
 def visualize(RTs, output, P):
     batch_size = RTs.shape[0]
     img = P['roi_feature']
-    lab = obj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+    lab, _, _ = obj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
     lev = []
     for idx in list(output.keys()):
-        lev.append(obj_visualize(output[idx]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask']))
+        lev_, _, _ = obj_visualize(output[idx]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+        lev.append(lev_)
     lev = torch.cat(lev, 0)
     img_g = make_grid(img, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
     lab_g = make_grid(lab, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()

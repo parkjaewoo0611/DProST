@@ -69,9 +69,6 @@ class BaseTrainer:
             # save logged informations into log dict
             log = {'epoch': epoch}
             log.update(result)
-            
-            self.hparams_result['current_epoch'] = epoch
-            self.writer.add_hparams(self.hparams, self.hparams_result)
 
             # print logged informations to the screen
             for key, value in log.items():
@@ -80,6 +77,8 @@ class BaseTrainer:
             # evaluate model performance according to configured metric, save best checkpoint as model_best
             best = False
             if epoch % self.save_period == 0 and self.mnt_mode != 'off':
+                self.hparams_result['current_epoch'] = epoch
+                self.writer.add_hparams(self.hparams, self.hparams_result)
                 try:
                     # check whether model performance improved or not, according to specified metric(mnt_metric)
                     improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.mnt_best) or \

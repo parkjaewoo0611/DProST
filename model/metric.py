@@ -3,8 +3,7 @@ from utils.LM_parameter import (
     VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, VSD_REN, VSD_THRESHOLD, 
     MSSD_THRESHOLD,
     MSPD_THRESHOLD,
-    LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, 
-    K)  #TODO: K from pickle
+    LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, K)  #TODO: K from pickle
 import numpy as np
 
 def VSD_score(out_RT, gt_RT, ids, depth_maps, **kwargs):

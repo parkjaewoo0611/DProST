@@ -6,7 +6,7 @@ from pytorch3d.transforms import rotation_6d_to_matrix, quaternion_to_matrix
 from base import BaseModel
 from utils.util import (
     apply_imagespace_predictions, crop_inputs, RT_from_boxes, bbox_add_noise, 
-    carving_feature, dynamic_projective_stn,
+    carving_feature, dynamic_projective_stn, obj_visualize,
     z_buffer_min, z_buffer_max, grid_sampler, get_roi_feature, ProST_grid
 )
 from utils.LM_parameter import FX, FY, PX, PY
@@ -61,7 +61,7 @@ class DProST(BaseModel):
         self.H = int(480 * img_ratio)
         self.W = int(640 * img_ratio)
         fx = FX * img_ratio
-        fy = FY * img_ratio
+        fy = FY * img_ratio 
         px = PX * img_ratio
         py = PY * img_ratio
         self.K = torch.tensor([[fx,  0, px],
@@ -115,46 +115,24 @@ class DProST(BaseModel):
         pred[0] = {'RT': RT_from_boxes(bboxes, K_batch).detach()}  
 
         ####################### DProST grid cropping #################################
-        ###### grid zoom-in 
         P['grid_crop'], P['coeffi_crop'], P['K_crop'], P['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.img_size, self.img_size))
-        ####################### crop from image ######################################
-        ####### get RoI feature from image    
+        ####################### crop from image ######################################s
         P['roi_feature'] = get_roi_feature(P['bboxes_crop'], images, (self.H, self.W), (self.img_size, self.img_size))
         ####################### DProST grid push & transform #########################
-        ##### get ftr feature
         for i in range(1, self.iteration+1):
-            pred[i], pred[i-1]['grid'], pred[i-1]['dist'] = self.projective_pose(
-                self.local_network[str(i)], 
-                pred[i-1]['RT'], 
-                P['ftr'], 
-                P['ftr_mask'], 
-                P['roi_feature'], 
-                P['grid_crop'], 
-                P['coeffi_crop'], 
-                P['K_crop'])
+            ###### Dynamic Projective STN & sampling & z-buffering
+            pred[i-1]['proj'], pred[i-1]['dist'], pred[i-1]['grid'] = obj_visualize(pred[i-1]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+            ###### Localization Network 
+            loc_input = torch.cat((pred[i-1]['proj'], P['roi_feature']), 1)
+            prediction = self.local_network[str(i)](loc_input.detach())
+            ###### update pose
+            next_RT = self.update_pose(pred[i-1]['RT'], P['K_crop'], prediction)
+            pred[i] = {'RT': next_RT}
 
         if self.mode == 'train' or self.mode == 'valid':
-            pred[self.iteration]['grid'], pred[self.iteration]['dist'] = dynamic_projective_stn(pred[self.iteration]['RT'], P['grid_crop'], P['coeffi_crop'])
-            P['gt_grid'], P['gt_dist'] = dynamic_projective_stn(gt_RT, P['grid_crop'], P['coeffi_crop'])
+            pred[self.iteration]['proj'], pred[self.iteration]['dist'], pred[self.iteration]['grid'] = obj_visualize(pred[self.iteration]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+            P['gt_proj'], P['gt_dist'], P['gt_grid'] = obj_visualize(gt_RT, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
         return pred, P
-
-
-    def projective_pose(self, local_network, previous_RT, ftr, ftr_mask, roi_feature, grid_crop, coeffi_crop, K_crop):
-        ###### Dynamic Projective STN
-        obj_grid, obj_dist = dynamic_projective_stn(previous_RT, grid_crop, coeffi_crop)
-        ####### sample ftr to 3D feature
-        NDC_ftr, NDC_ftr_mask = grid_sampler(ftr, ftr_mask, obj_grid)
-
-        ###### z-buffering
-        proj_img, _ = z_buffer_min(NDC_ftr, NDC_ftr_mask)
-        loc_input = torch.cat((proj_img, roi_feature), 1)
-
-        ###### Localization Network 
-        prediction = local_network(loc_input.detach())
-        ###### update pose
-        next_RT = self.update_pose(previous_RT, K_crop, prediction)
-        return {'RT': next_RT}, obj_grid, obj_dist
-
 
     def update_pose(self, TCO, K_crop, pose_outputs):
         ##### from https://github.com/ylabbe/cosypose

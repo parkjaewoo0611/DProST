@@ -56,7 +56,6 @@ class MeshesLoader():
                 mesh_info_dict[mesh_index] = mesh_info[key]
         return mesh_info_dict
 
-
     def sample_pts(self, N_pts):
         points_dict = {}
         for obj_id in self.MESH_DICT.keys():
