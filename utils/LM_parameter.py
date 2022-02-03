@@ -164,20 +164,20 @@ K = np.array([[FX,  0, PX],
               [ 0,  0,  1]])
 
 # parameters for metric function
-from utils.bop_toolkit.bop_toolkit_lib import renderer
-import os
-TAUS = list(np.arange(0.05, 0.51, 0.05))
+#from utils.bop_toolkit.bop_toolkit_lib import renderer
+#import os
+#TAUS = list(np.arange(0.05, 0.51, 0.05))
 WIDTH = 640
 HEIGHT = 480
 
 # vsd parameters from bop_toolkit.bop_toolkit_lib.eval_calc_scores
-VSD_DELTA = 15
-VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
-VSD_NORMALIZED_BY_DIAMETER = True
-VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
-obj_path = '../Dataset/LINEMOD/models'
-for obj_id in LM_idx2class.keys():
-    VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
+#VSD_DELTA = 15
+#VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
+#VSD_NORMALIZED_BY_DIAMETER = True
+#VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
+#obj_path = '../Dataset/LINEMOD/models'
+#for obj_id in LM_idx2class.keys():
+#    VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
 
-MSSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
-MSPD_THRESHOLD = np.arange(5, 51, 5)[:, np.newaxis] * WIDTH/640
+#MSSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
+#MSPD_THRESHOLD = np.arange(5, 51, 5)[:, np.newaxis] * WIDTH/640

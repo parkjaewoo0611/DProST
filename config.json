@@ -46,8 +46,7 @@
     "valid_metrics": [
         "ADD_score_10"
     ],
-    "test_metrics": [
-        "VSD_score", "MSSD_score", "MSPD_score", 
+    "test_metrics": [ 
         "ADD_score_02", "ADD_score_05", "ADD_score_10", 
         "PROJ_score_02", "PROJ_score_05", "PROJ_score_10"
     ],

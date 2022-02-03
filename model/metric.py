@@ -1,8 +1,8 @@
 from utils.bop_toolkit.bop_toolkit_lib.pose_error import vsd, mssd, mspd, re, te, proj, add, adi
 from utils.LM_parameter import (
-    VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, VSD_REN, VSD_THRESHOLD, 
-    MSSD_THRESHOLD,
-    MSPD_THRESHOLD,
+#    VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, VSD_REN, VSD_THRESHOLD, 
+#    MSSD_THRESHOLD,
+#    MSPD_THRESHOLD,
     LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, K)  #TODO: K from pickle
 import numpy as np
 
