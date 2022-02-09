@@ -1,202 +1,82 @@
 from utils.bop_toolkit.bop_toolkit_lib.pose_error import vsd, mssd, mspd, re, te, proj, add, adi
-from utils.LM_parameter import (
-#    VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, VSD_REN, VSD_THRESHOLD, 
-#    MSSD_THRESHOLD,
-#    MSPD_THRESHOLD,
-    LM_idx2symmetry, LM_idx2diameter, LM_idx2radius, LM_idx2syms, K)  #TODO: K from pickle
 import numpy as np
+from scipy.integrate import simps
 
-def VSD_score(out_RT, gt_RT, ids, depth_maps, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    AR_VSD = []
-    for i, id in enumerate(ids):
-        diameter = LM_idx2diameter[id]
-        depth_map = depth_maps[i].numpy()
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        e = vsd(R_e, t_e, R_g, t_g, depth_map, K, VSD_DELTA, TAUS, VSD_NORMALIZED_BY_DIAMETER, diameter, VSD_REN, id, 'step')
-        result = np.mean(np.array(e)[None] < VSD_THRESHOLD)
-        AR_VSD.append(result)
-    mAR_VSD_score = np.mean(AR_VSD)
-    return mAR_VSD_score
+# unit of distance -> mm, rotation -> degree
+def RE_TE_02(RE, TE, **kwargs):
+    check = [(re < 2) and (te < 20) for re, te in zip(RE, TE)]
+    score = np.mean(check) * 100
+    return score
 
-def MSSD_score(out_RT, gt_RT, ids, points, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    points = points.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    AR_MSSD = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        syms = LM_idx2syms[id]
-        e = mssd(R_e, t_e, R_g, t_g, pts, syms)
-        result = np.mean(np.array(e)[None] < MSSD_THRESHOLD * LM_idx2diameter[id])
-        AR_MSSD.append(result)            
-    mAR_MSSD = np.mean(AR_MSSD)
-    return mAR_MSSD
+def RE_TE_05(RE, TE, **kwargs):
+    check = [(re < 5) and (te < 50) for re, te in zip(RE, TE)]
+    score = np.mean(check) * 100
+    return score
 
-def MSPD_score(out_RT, gt_RT, ids, points, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    points = points.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    AR_MSPD = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        syms = LM_idx2syms[id]
-        e = mspd(R_e, t_e, R_g, t_g, K, pts, syms)
-        result = np.mean(np.array(e)[None] < MSPD_THRESHOLD)
-        AR_MSPD.append(result)            
-    mAR_MSPD = np.mean(AR_MSPD)
-    return mAR_MSPD
+# unit of distance -> pixel
+def PROJ_02(PROJ, **kwargs):
+    check = [proj < 2 for proj in PROJ]
+    score = np.mean(check) * 100
+    return score
 
-def RE_score(out_RT, gt_RT, ids, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    RE = []
-    for i, id in enumerate(ids):
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        e = re(R_e, R_g)
-        result = np.mean(np.array(e))
-        RE.append(result)    
-    mRE = np.mean(RE)
-    return mRE
+def PROJ_05(PROJ, **kwargs):
+    check = [proj < 5 for proj in PROJ]
+    score = np.mean(check) * 100
+    return score
 
-def TE_score(out_RT, gt_RT, ids, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    TE = []
-    for i, id in enumerate(ids):
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        e = te(t_e, t_g)
-        result = np.mean(np.array(e))
-        TE.append(result)    
-    mTE = np.mean(TE)
-    return mTE
+def PROJ_10(PROJ, **kwargs):
+    check = [proj < 10 for proj in PROJ]
+    score = np.mean(check) * 100
+    return score
 
-def PROJ_score_02(out_RT, gt_RT, points, ids, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    points = points.detach().cpu().numpy()
-    PROJ = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        e = proj(R_e, t_e, R_g, t_g, K, pts)
-        PROJ.append((e - 2)<0)
-    mPROJ = np.mean(PROJ)
-    return mPROJ
+# unit of distance -> mm
+def ADD_S_02(ADD_S, diameter, **kwargs):
+    THR = [d * 0.02 for d in diameter]
+    check = [add_s < thr for add_s, thr in zip(ADD_S, THR)]
+    score = np.mean(check) * 100
+    return score
 
-def PROJ_score_05(out_RT, gt_RT, points, ids, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    points = points.detach().cpu().numpy()
-    PROJ = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        e = proj(R_e, t_e, R_g, t_g, K, pts)
-        PROJ.append((e - 5)<0)
-    mPROJ = np.mean(PROJ)
-    return mPROJ
+def ADD_S_05(ADD_S, diameter, **kwargs):
+    THR = [d * 0.05 for d in diameter]
+    check = [add_s < thr for add_s, thr in zip(ADD_S, THR)]
+    score = np.mean(check) * 100
+    return score
 
-def PROJ_score_10(out_RT, gt_RT, points, ids, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    points = points.detach().cpu().numpy()
-    PROJ = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        e = proj(R_e, t_e, R_g, t_g, K, pts)
-        PROJ.append((e - 10)<0)
-    mPROJ = np.mean(PROJ)
-    return mPROJ
+def ADD_S_10(ADD_S, diameter, **kwargs):
+    THR = [d * 0.10 for d in diameter]
+    check = [add_s < thr for add_s, thr in zip(ADD_S, THR)]
+    score = np.mean(check) * 100
+    return score
 
-def ADD_score_02(out_RT, gt_RT, points, ids, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    points = points.detach().cpu().numpy()
-    ADD02 = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        if LM_idx2symmetry[id] == 'none':
-            e = add(R_e, t_e, R_g, t_g, pts)
-        else:
-            e = adi(R_e, t_e, R_g, t_g, pts)
-        ADD02.append((e - LM_idx2diameter[id]*0.02)<0)
-    mADD02 = np.mean(ADD02)
-    return mADD02
+# threshold from 0 ~ 10cm 
+# from https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi/blob/master/lib/utils/eval.py
+# Our RT values follow mm 
+dx = 1
+THR = np.arange(0, 100, dx).astype(np.float32)
+N_THR = THR.shape[0]
+def ADD_AUC(ADD, **kwargs):
+    N = len(ADD)
+    count_correct = np.zeros(N_THR, dtype=np.float32)
+    for s in ADD:
+        correct = s < THR
+        count_correct += correct 
+    area = simps(count_correct / float(N), dx=dx)
+    return area
 
-def ADD_score_05(out_RT, gt_RT, points, ids, **kwargss):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    points = points.detach().cpu().numpy()
-    ADD05 = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        if LM_idx2symmetry[id] == 'none':
-            e = add(R_e, t_e, R_g, t_g, pts)
-        else:
-            e = adi(R_e, t_e, R_g, t_g, pts)
-        ADD05.append((e - LM_idx2diameter[id]*0.05)<0)
-    mADD05 = np.mean(ADD05)
-    return mADD05
+def ADD_S_AUC(ADD_S, **kwargs):
+    N = len(ADD_S)
+    count_correct = np.zeros(N_THR, dtype=np.float32)
+    for s in ADD_S:
+        correct = s < THR
+        count_correct += correct 
+    area = simps(count_correct / float(N), dx=dx)
+    return area
 
-def ADD_score_10(out_RT, gt_RT, points, ids, **kwargs):
-    out_RT = out_RT.detach().cpu().numpy()
-    gt_RT = gt_RT.detach().cpu().numpy()
-    ids = ids.cpu().numpy()
-    points = points.detach().cpu().numpy()
-    ADD10 = []
-    for i, id in enumerate(ids):
-        pts = points[i] * LM_idx2radius[id]
-        R_e = out_RT[i, :3, :3]
-        R_g = gt_RT[i, :3, :3]
-        t_e = out_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        t_g = gt_RT[i, :3, 3][:, np.newaxis] * LM_idx2radius[id]
-        if LM_idx2symmetry[id] == 'none':
-            e = add(R_e, t_e, R_g, t_g, pts)
-        else:
-            e = adi(R_e, t_e, R_g, t_g, pts)
-        ADD10.append((e - LM_idx2diameter[id]*0.10)<0)
-    mADD10 = np.mean(ADD10)
-    return mADD10
+def ADD_SS_AUC(ADD_SS, **kwargs):
+    N = len(ADD_SS)
+    count_correct = np.zeros(N_THR, dtype=np.float32)
+    for s in ADD_SS:
+        correct = s < THR
+        count_correct += correct 
+    area = simps(count_correct / float(N), dx=dx)
+    return area

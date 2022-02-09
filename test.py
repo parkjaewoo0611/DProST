@@ -10,36 +10,34 @@ import torch
 from tqdm import tqdm
 import data_loader.mesh_loader as module_mesh
 import data_loader.data_loaders as module_data
-import model.loss as module_loss
 import model.metric as module_metric
+import model.error as module_error
 import model.model as module_arch
 from parse_config import ConfigParser
 from utils.util import visualize
 import matplotlib.pyplot as plt
 import csv
 import warnings
-from utils.util import hparams_key
+from utils.util import hparams_key, build_ref, get_param, MetricTracker
 
 warnings.filterwarnings("ignore") 
 
-def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, criterion=None, 
-         best_path=None, writer=None, metric_ftns=None, ftr=None, ftr_mask=None, **kwargs):
+def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, best_path=None, writer=None, 
+         error_ftns=None, metric_ftns=None, ftr=None, ftr_mask=None, use_mesh=False, **kwargs):
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"]= config["gpu_id"]
 
-    # test result visualized folder
-    if is_test and config["visualize"]:
-        result_path = config["result_path"]
-        if os.path.isdir(result_path):
-            shutil.rmtree(result_path)
-        os.makedirs(result_path, exist_ok=True)
-
     # prepare model for testing
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     logger = config.get_logger('test')
 
     if is_test:
+        # test result visualized folder
+        if config["visualize"]:
+            result_path = config["result_path"]
+            if os.path.isdir(result_path):
+                shutil.rmtree(result_path)
+            os.makedirs(result_path, exist_ok=True)
         # set repeated args required
         config['data_loader']['args']['img_ratio'] = config['arch']['args']['img_ratio']
         config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
@@ -66,17 +64,19 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
         # logger.info(model)
 
         # get function handles of loss and metrics
-        criterion = getattr(module_loss, config['loss'])
         best_path = config.resume
 
         metric_ftns = [getattr(module_metric, met) for met in config['test_metrics']]
+        error_ftns = [getattr(module_error, met) for met in config['test_errors']]
 
         ftr = {}
         ftr_mask = {}
-        obj_references = data_loader.select_reference()
-        for obj_id, references in obj_references.items():
-            ftr[obj_id], ftr_mask[obj_id] = model.build_ref(references)
-            ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(device), ftr_mask[obj_id].to(device)
+        for obj_id in config['mesh_loader']['args']['obj_list']:
+            print(f'Generating Reference Feature of obj {obj_id}')
+            ref = data_loader.select_reference(obj_id)
+            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
+
+    test_metrics = MetricTracker(error_ftns=error_ftns, metric_ftns=metric_ftns)
 
     logger.info('Loading checkpoint: {} ...'.format(best_path))
     checkpoint = torch.load(best_path)
@@ -85,32 +85,43 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
     model = model.to(device)
     model.eval()
     model.mode = 'test'
+    
+    DATA_PARAM = get_param(data_loader.data_dir)
 
     # set iteration setting
     model.iteration = config["arch"]["args"]["iteration"]
 
-    total_metrics = torch.zeros(len(metric_ftns))
 
     with torch.no_grad():
-        for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(data_loader, disable=config['gpu_scheduler'])):
-            images, masks, bboxes, RTs = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device)
-            ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
-            ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
+        for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs, Ks, K_origins) in enumerate(tqdm(data_loader, disable=config['gpu_scheduler'])):
+            images, masks, bboxes, RTs, Ks = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device), Ks.to(device)
+            if use_mesh:
+                meshes = mesh_loader.batch_meshes(obj_ids)
+                ftrs = None
+                ftr_masks = None
+            else:
+                meshes = None
+                ftrs = torch.cat([ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
+                ftr_masks = torch.cat([ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
 
-            output, P = model(images, ftrs, ftr_masks, bboxes, obj_ids)
-            P['vertexes'] = torch.stack([mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
+            output, P = model(images, ftrs, ftr_masks, bboxes, Ks, RTs, meshes)
+
+            P['vertexes'] = [mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids]
 
             # computing loss, metrics on test set          
             M = {
                 'out_RT' : output[list(output.keys())[-1]]['RT'],
                 'gt_RT' : RTs,
+                'K' : K_origins,
                 'ids' : obj_ids,
                 'points' : P['vertexes'],
-                'depth_maps' : depths
+                'depth_maps' : depths,
+                'DATA_PARAM' : DATA_PARAM
             }
-            batch_size = images.shape[0]
-            for i, met in enumerate(metric_ftns):
-                total_metrics[i] += met(**M) * batch_size
+
+            for err in test_metrics._error_ftns:
+                test_metrics.update(err.__name__, err(**M))
+            test_metrics.update('diameter', [DATA_PARAM['idx2diameter'][id] for id in obj_ids.tolist()])
 
             #### visualize images
             if is_test and config["visualize"]:
@@ -118,14 +129,13 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, c
                 plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
 
-    n_samples = len(data_loader.sampler)
     log = {}
     log.update({
-        met.__name__: round(total_metrics[i].item() / n_samples * 100, 1) for i, met in enumerate(metric_ftns)
+        k : v for k, v in test_metrics.result().items()
     })
     logger.info(log)
     
-    result_csv_path = best_path.split('/')
+    result_csv_path = list(best_path.parts)
     result_csv_path[1], result_csv_path[-1] = 'log', 'test_result.csv'
     result_csv_path = os.path.join(*result_csv_path)
     with open(result_csv_path, "w") as csv_file:
@@ -148,13 +158,12 @@ if __name__ == '__main__':
                       help='indices of GPUs to enable (default: all)')
     args.add_argument('-v', '--visualize', default=False, type=str2bool,
                       help='visualize results in result folder')
-    args.add_argument('--result_path', default=None, type=str,
+    args.add_argument('-p', '--result_path', default=None, type=str,
                       help='result saved path')
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
-        CustomArgs(['--start_level'], type=int, target='arch;args;start_level'),
-        CustomArgs(['--end_level'], type=int, target='arch;args;end_level'),
+        CustomArgs(['--iteration'], type=int, target='arch;args;iteration'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

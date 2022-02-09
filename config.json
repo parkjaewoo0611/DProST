@@ -32,7 +32,8 @@
     "mesh_loader": {
         "type": "MeshesLoader",
         "args":{
-            "N_pts" : 64
+            "N_pts" : 64,
+            "use_mesh": false
         }
     },
     "optimizer": {
@@ -43,12 +44,20 @@
         }
     },
     "loss": "grid_matching_loss",
+    "valid_errors": [
+        "ADD_S"
+    ],
     "valid_metrics": [
-        "ADD_score_10"
+        "ADD_S_10"
+    ],
+    "test_errors": [
+        "ADD", "ADD_S", "ADD_SS", "PROJ", "RE", "TE"
     ],
     "test_metrics": [ 
-        "ADD_score_02", "ADD_score_05", "ADD_score_10", 
-        "PROJ_score_02", "PROJ_score_05", "PROJ_score_10"
+        "ADD_S_02", "ADD_S_05", "ADD_S_10",
+        "ADD_AUC", "ADD_S_AUC", "ADD_SS_AUC", 
+        "PROJ_02", "PROJ_05", "PROJ_10",
+        "RE_TE_02", "RE_TE_05"
     ],
     "lr_scheduler": {
         "type": "StepLR",
@@ -62,7 +71,7 @@
         "save_dir": "saved/",
         "save_period": 100,
         "verbosity": 2,
-        "monitor": "max val_ADD_score_10",
+        "monitor": "max val_ADD_S_10",
         "early_stop": 1000,
         "tensorboard": true
     }

@@ -1,6 +1,6 @@
 import numpy as np
 
-LM_idx2class = {
+idx2class = {
     1: "ape",
     2: "benchvise",
     #3: 'bowl',
@@ -18,7 +18,7 @@ LM_idx2class = {
     15: "phone",
 }
 
-LM_class2idx = {
+class2idx = {
     "ape" : 1,
     "benchvise" : 2,
     #'bowl' : 3,
@@ -36,7 +36,7 @@ LM_class2idx = {
     "phone" : 15,
 }
 
-LM_idx2symmetry = {
+idx2symmetry = {
     1 : 'none',
     2 : 'none',
     #3 : 'sym_con',
@@ -54,7 +54,7 @@ LM_idx2symmetry = {
     15 : 'none',
 }
 
-LM_idx2syms= {
+idx2syms= {
     1 : [{"R": np.eye(3, 3),
           "t": np.zeros([3, 1])
     }],
@@ -102,7 +102,7 @@ LM_idx2syms= {
     }],
 }
 
-LM_idx2diameter = {
+idx2diameter = {
     1 : 102.099,
     2 : 247.506,
     #3 : 167.355,
@@ -120,7 +120,7 @@ LM_idx2diameter = {
     15 : 212.358,
 }
 
-LM_idx2radius = {
+idx2radius = {
     1 : 59.5355,
     2 : 140.3643,
     4 : 99.6404,
@@ -136,23 +136,6 @@ LM_idx2radius = {
     15 : 109.9537,
 }
 
-## radius of DeepIM/data/LINEMOD_6D/LM6d_converted/LM6d_refine/models/**/textured.obj
-LM_idx2synradius = {
-    1 : 0.0595,
-    2 : 0.1404,
-    4 : 0.0996,        
-    5 : 0.1107,         
-    6 : 0.0847,         
-    8 : 0.1458,
-    9 : 0.0640,         
-    10 : 0.0830,
-    11 : 0.0918,        
-    12 : 0.0755,        
-    13 : 0.1451,        
-    14 : 0.1481,
-    15 : 0.1100         
-}
-
 
 FX = 572.4114
 FY = 573.57043
@@ -162,22 +145,35 @@ PY = 242.04899
 K = np.array([[FX,  0, PX],
               [ 0, FY, PY],
               [ 0,  0,  1]])
-
-# parameters for metric function
-#from utils.bop_toolkit.bop_toolkit_lib import renderer
-#import os
-#TAUS = list(np.arange(0.05, 0.51, 0.05))
 WIDTH = 640
 HEIGHT = 480
 
-# vsd parameters from bop_toolkit.bop_toolkit_lib.eval_calc_scores
-#VSD_DELTA = 15
-#VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
-#VSD_NORMALIZED_BY_DIAMETER = True
-#VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
-#obj_path = '../Dataset/LINEMOD/models'
-#for obj_id in LM_idx2class.keys():
+# # parameters for metric function
+# from utils.bop_toolkit.bop_toolkit_lib import renderer
+# import os
+# TAUS = list(np.arange(0.05, 0.51, 0.05))
+# # vsd parameters from bop_toolkit.bop_toolkit_lib.eval_calc_scores
+# VSD_DELTA = 15
+# VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
+# VSD_NORMALIZED_BY_DIAMETER = True
+# VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
+# obj_path = '../Dataset/LINEMOD/models'
+# for obj_id in idx2class.keys():
 #    VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
+# MSSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
+# MSPD_THRESHOLD = np.arange(5, 51, 5)[:, np.newaxis] * WIDTH/640
 
-#MSSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
-#MSPD_THRESHOLD = np.arange(5, 51, 5)[:, np.newaxis] * WIDTH/640
+DATA_PARAM = {
+        'idx2symmetry' : idx2class,
+        'idx2diameter' : idx2diameter,
+        'idx2radius' : idx2radius,
+        'idx2syms' : idx2syms,
+        'idx2class' : idx2class,
+      #   'taus' : TAUS,
+      #   'vsd_delta' : VSD_DELTA,
+      #   'vsd_threshold' : VSD_THRESHOLD,
+      #   'vsd_normalized_by_diameter' : VSD_NORMALIZED_BY_DIAMETER,
+      #   'vsd_ren' : VSD_REN,
+      #   'mssd_threshold' : MSSD_THRESHOLD,
+      #   'mspd_threshold' : MSPD_THRESHOLD
+    }

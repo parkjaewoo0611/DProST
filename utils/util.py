@@ -6,7 +6,6 @@ from itertools import repeat
 from collections import OrderedDict
 import torch.nn.functional as F
 
-
 def ensure_dir(dirname):
     dirname = Path(dirname)
     if not dirname.is_dir():
@@ -50,27 +49,41 @@ def prepare_device(gpu_id):
     return device, gpu_list
 
 class MetricTracker:
-    def __init__(self, *keys, writer=None):
+    def __init__(self, error_ftns=[], metric_ftns=[], writer=None):
         self.writer = writer
-        self._data = pd.DataFrame(index=keys, columns=['total', 'counts', 'average'])
-        self.reset()
+        self._loss = dict.fromkeys(['total', 'counts'], 0)
+        self._error_ftns = error_ftns
+        self._stack = {
+            err.__name__: [] for err in error_ftns       # each error for each samples
+        }
+        self._stack['diameter'] = []
+        self._metric_ftns = metric_ftns
 
     def reset(self):
-        for col in self._data.columns:
-            self._data[col].values[:] = 0
-
-    def update(self, key, value, write, n=1):
+        for key in self._loss.keys():
+            self._loss[key] = 0
+        for key in self._stack.keys():
+            self._stack[key] = []
+    
+    def loss_update(self, value, write, n=1):
         if write and self.writer is not None:
-            self.writer.add_scalar(key, value)
-        self._data.total[key] += value * n
-        self._data.counts[key] += n
-        self._data.average[key] = self._data.total[key] / self._data.counts[key]
+            self.writer.add_scalar('loss', value)
+        self._loss['total'] += value * n
+        self._loss['counts'] += n
 
-    def avg(self, key):
-        return self._data.average[key]
+    def loss_avg(self):
+        return self._loss['total'] / self._loss['counts']
+
+    def update(self, key, value):
+        self._stack[key] += value       # stack errors and infos for each sample
 
     def result(self):
-        return dict(self._data.average)
+        _result = {
+            met.__name__ : met(**self._stack) for met in self._metric_ftns
+        }
+        if self._loss['counts'] > 0:
+            _result['loss'] = self.loss_avg()
+        return _result
 
 ######################################################
 import torch
@@ -78,10 +91,13 @@ import torchvision
 import numpy as np
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
 from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle, Transform3d
+from pytorch3d.renderer import (
+    RasterizationSettings, MeshRenderer, MeshRasterizer,
+    HardPhongShader, PerspectiveCameras
+)
 from torchvision.ops import roi_align
 from torchvision.utils import make_grid
 import cv2
-from PIL import Image
 from flatten_dict import flatten
 
 def R_T_to_RT(R, T):
@@ -265,10 +281,7 @@ def deepim_crops(grids, coefficients, obs_boxes, output_size=None, lamb=1.4):
     crops_Z = torchvision.ops.roi_align(grids.permute(4, 0, 1, 2, 3)[2], boxes, output_size=output_size, sampling_ratio=4)
     crops = torch.stack((crops_X, crops_Y, crops_Z)).permute(1, 2, 3, 4, 0)
 
-    coeffi_crops_X = torchvision.ops.roi_align(coefficients.permute(4, 0, 1, 2, 3)[0], boxes, output_size=output_size, sampling_ratio=4)
-    coeffi_crops_Y = torchvision.ops.roi_align(coefficients.permute(4, 0, 1, 2, 3)[1], boxes, output_size=output_size, sampling_ratio=4)
-    coeffi_crops_Z = torchvision.ops.roi_align(coefficients.permute(4, 0, 1, 2, 3)[2], boxes, output_size=output_size, sampling_ratio=4)
-    coefficient_crops = torch.stack((coeffi_crops_X, coeffi_crops_Y, coeffi_crops_Z)).permute(1, 2, 3, 4, 0)
+    coefficient_crops = torchvision.ops.roi_align(coefficients.permute(0, 3, 1, 2), boxes, output_size=output_size, sampling_ratio=4).permute(0, 2, 3, 1)
     return boxes[:, 1:], crops, coefficient_crops
 
 
@@ -362,25 +375,32 @@ def apply_imagespace_predictions(RT, K, vxvyvz, dRCO):
     return RT_out
 
 ############################################# DProST module functions ######################################
-
-def ProST_grid(H, W, f, cx, cy, rc_pts):
+def ProST_grid(H, W, f, cx, cy):
     meshgrid = torch.meshgrid(torch.range(0, H-1), torch.range(0, W-1))
     X = (cx - meshgrid[1])
     Y = (cy - meshgrid[0])
     Z = torch.ones_like(X) * f
     XYZ = torch.cat((X.unsqueeze(2), Y.unsqueeze(2), Z.unsqueeze(2)), -1)
-    L = torch.norm(XYZ, dim=-1)
+    return XYZ
 
+def reshape_grid(K_batch, K_d, XYZ, N_z):
+    bsz = K_batch.shape[0]
+    f, px, py = (K_batch[..., 0, 0] + K_batch[..., 1, 1])/2, K_batch[..., 0, 2], K_batch[..., 1, 2]
+    f_d, px_d, py_d = (K_d[..., 0, 0] + K_d[..., 1, 1])/2,  K_d[..., 0, 2],  K_d[..., 1, 2]
+    XYZ = XYZ.unsqueeze(0).repeat(bsz, 1, 1, 1)
+    XYZ[...,2] = XYZ[...,2] * (f / f_d).unsqueeze(1).unsqueeze(2)
+    sim_ratio = XYZ[..., 2] / f.unsqueeze(1).unsqueeze(2)
+    delta_px, delta_py = px - px_d, py - py_d
+    XYZ[..., 0] = XYZ[...,0] + delta_px.unsqueeze(1).unsqueeze(2) * sim_ratio
+    XYZ[..., 1] = XYZ[...,1] + delta_py.unsqueeze(1).unsqueeze(2) * sim_ratio
+    L = torch.norm(XYZ, dim=-1)
+    normalized_XYZ = XYZ / L.unsqueeze(-1)
     dist_min = -1
     dist_max = 1
-    step_size = (dist_max - dist_min) / rc_pts
+    step_size = (dist_max - dist_min) / N_z
     steps = torch.arange(dist_min, dist_max - step_size/2, step_size)
-    normalized_XYZ = XYZ.unsqueeze(0).repeat(rc_pts, 1, 1, 1) / L.unsqueeze(0).unsqueeze(3).repeat(rc_pts, 1, 1, 1)
-    ProST_grid = steps.unsqueeze(1).unsqueeze(2).unsqueeze(3) * normalized_XYZ
-
-    return ProST_grid.unsqueeze(0), normalized_XYZ.unsqueeze(0)
-
-# for change RT to pytorch3d style
+    projstn_grid = steps.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4).repeat(bsz, 1, 1, 1, 1).to(normalized_XYZ.device) * normalized_XYZ.unsqueeze(1)
+    return projstn_grid, normalized_XYZ
 
 def grid_transformer(grid, RT):
     ###### Projective Grid Generator
@@ -393,8 +413,12 @@ R_comp = torch.eye(4, 4)[None]
 R_comp[0, 0, 0] = -1
 R_comp[0, 1, 1] = -1
 R_comp.requires_grad = True
+def RT_to_pytorch3d_RT(RT):
+    pytorch3d_RT = torch.bmm(R_comp.repeat(RT.shape[0], 1, 1).to(RT.device), RT).permute(0, 2, 1) # pytorch style RT
+    return pytorch3d_RT
+
 def transform_pts(RT, pts, inverse=False):
-    RT = torch.bmm(R_comp.repeat(RT.shape[0], 1, 1).to(RT.device), RT).permute(0, 2, 1) # pytorch style RT
+    RT = RT_to_pytorch3d_RT(RT)
     t = Transform3d(matrix=RT)
     if inverse:
         t = t.inverse()
@@ -408,19 +432,22 @@ def get_roi_feature(bboxes_crop, img_feature, original_size, output_size):
     roi_feature = roi_align(img_feature, bboxes_img_feature, output_size=output_size, sampling_ratio=4)
     return roi_feature
 
-def obj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask):
+def obj_visualize(RT, grid_crop, coeffi_crop, ftr, ftr_mask, mesh, K_crop, img_size, **kwargs):
     ####### Dynamic Projective STN
     obj_grid, obj_dist = dynamic_projective_stn(RT, grid_crop, coeffi_crop)
-    ####### sample ftr to 2D
-    NDC_ftr, NDC_ftr_mask = grid_sampler(ftr, ftr_mask, obj_grid)
-    ###### z-buffering
-    proj_img, proj_index = z_buffer_min(NDC_ftr, NDC_ftr_mask)
+    if mesh == None:
+        ####### sample ftr to 2D
+        NDC_ftr, NDC_ftr_mask = grid_sampler(ftr, ftr_mask, obj_grid)
+        ###### z-buffering
+        proj_img, proj_index = z_buffer_min(NDC_ftr, NDC_ftr_mask)
+    else:
+        proj_img = meshes_visualize(K_crop, RT, img_size, mesh)
     return proj_img, obj_dist, obj_grid
 
 def dynamic_projective_stn(RT, grid_crop, coeffi_crop):
     ###### grid pushing
     obj_dist = torch.norm(RT[:, :3, 3], 2, -1)
-    cam_grid = grid_crop + coeffi_crop * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+    cam_grid = grid_crop + coeffi_crop.unsqueeze(1) * obj_dist.unsqueeze(1).unsqueeze(2).unsqueeze(3).unsqueeze(4)
     ###### Projective Grid transform
     obj_grid = grid_transformer(cam_grid, RT)
     return obj_grid, obj_dist
@@ -445,7 +472,6 @@ def z_buffer_min(ftr, mask):
     img = torch.gather(ftr, 2, index.unsqueeze(1).unsqueeze(2).repeat(1, ftr.shape[1], 1, 1, 1)).squeeze(2)
     return img, index
 
-
 def contour(render, img, is_label):
     if is_label: 
         color = (0, 255, 0) 
@@ -454,27 +480,29 @@ def contour(render, img, is_label):
     img = ((img - np.min(img))/(np.max(img) - np.min(img)) * 255).astype(np.uint8).copy() # convert to contiguous array
     render = ((render - np.min(render))/(np.max(render) - np.min(render)) * 255).astype(np.uint8)
     render = cv2.cvtColor(render, cv2.COLOR_RGB2GRAY)
-    _, thr = cv2.threshold(render, 10, 255, 0)
+    _, thr = cv2.threshold(render, 2, 255, 0)
     contours, _ = cv2.findContours(thr, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     result = cv2.drawContours(img, contours, -1, color, 2)
     return result
 
 def visualize(RTs, output, P):
-    batch_size = RTs.shape[0]
-    img = P['roi_feature']
-    lab, _, _ = obj_visualize(RTs, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+    vis_size = 1
+    img = P['roi_feature'][:vis_size]
+    lab, _, _ = obj_visualize(RTs, **P)
+    lab = lab[:vis_size]
     lev = []
     for idx in list(output.keys()):
-        lev_, _, _ = obj_visualize(output[idx]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-        lev.append(lev_)
+        lev_, _, _ = obj_visualize(output[idx]['RT'], **P)
+        lev.append(lev_[:vis_size])
     lev = torch.cat(lev, 0)
-    img_g = make_grid(img, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
-    lab_g = make_grid(lab, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
-    lev_g = make_grid(lev, nrow=batch_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    img_g = make_grid(img, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    lab_g = make_grid(lab, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    lev_g = make_grid(lev, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
     g = np.concatenate((img_g, lab_g, lev_g), 0)
+
     lab_c = contour(lab_g, img_g, is_label=True)
     lev_c = contour(lev_g, np.tile(lab_c, (len(output.keys()), 1, 1)), is_label=False)
-    c = np.concatenate((lab_c, lev_c), 0)
+    c = np.concatenate((img_g, lab_c/255.0, lev_c/255.0), 0)
     return c, g
 
 ########################################### reference function ######################################################
@@ -483,7 +511,7 @@ def farthest_rotation_sampling(dataset, N):
     farthest_idx = np.zeros(N).astype(int)
     farthest_Rs = np.zeros([N, 3, 3])
     Rs = torch.tensor(np.stack([data['RT'][:3, :3] for data in dataset]))
-    mask_pixel_N = [np.array(Image.open(data['mask'])).sum() for data in dataset]
+    mask_pixel_N = [data['px_count_visib'] for data in dataset]
     farthest_idx[0] = np.array(mask_pixel_N).argmax()
     farthest_Rs[0] = Rs[int(farthest_idx[0])]
     distances = so3_relative_angle(torch.tensor(farthest_Rs[0]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs)
@@ -520,6 +548,38 @@ def carving_feature(masks, features, RT, K_crop, ftr_size):
     ftr_mask_3d = ftr_mask_3d.transpose(2, 4)          # XYZ to ZYX (DHW)
     ftr_3d = ftr_3d.transpose(2, 4)                    # XYZ to ZYX (DHW)
     return ftr_3d, ftr_mask_3d
+
+def build_ref(ref, K_d, XYZ, N_z, ftr_size, H, W):
+    ref = {k : v.to(XYZ.device) for k, v in ref.items()}
+    projstn_grid, coefficient = reshape_grid(ref['Ks'], K_d, XYZ, N_z)
+    _, _, K_crop, bboxes_crop = crop_inputs(projstn_grid, coefficient, ref['Ks'], ref['bboxes'], (ftr_size, ftr_size))
+    roi_feature = get_roi_feature(bboxes_crop, ref['images'], (H, W), (ftr_size, ftr_size))
+    roi_mask = get_roi_feature(bboxes_crop, ref['masks'], (H, W), (ftr_size, ftr_size))
+    ftr, ftr_mask = carving_feature(roi_mask, roi_feature, ref['RTs'], K_crop, ftr_size)
+    return ftr, ftr_mask
+
+############################################### mesh rendering function for ablation ###########################################
+def camera_update(K, R, T, size):
+    f = torch.stack([K[:, 0, 0], K[:, 1, 1]]).permute(1, 0)
+    p = torch.stack([K[:, 0, 2], K[:, 1, 2]]).permute(1, 0)
+    raster_settings = RasterizationSettings(image_size=size,
+                                            blur_radius=0.0,
+                                            faces_per_pixel=1)
+    cameras = PerspectiveCameras(focal_length=f,
+                                 principal_point=p,
+                                 image_size = torch.tensor(size)[None].repeat(K.shape[0], 1),
+                                 R=R,
+                                 T=T,
+                                 in_ndc=False)
+    phong_renderer = MeshRenderer(rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
+                                  shader=HardPhongShader(cameras=cameras))
+    return phong_renderer
+
+def meshes_visualize(K, RT, size, mesh):
+    RT = RT_to_pytorch3d_RT(RT)
+    phong_renderer = camera_update(K, RT[:, :3, :3], RT[:, 3, :3], size).to(RT.device)
+    phong = phong_renderer(meshes_world=mesh)[..., :3].permute(0, 3, 1, 2) / 255.0
+    return phong
 
 ############################################### background substiture function ####################################
 
@@ -577,3 +637,14 @@ def hparams_key(config):
         if name in required_hparams: 
             hparams[name]=f"{v}"
     return hparams
+
+################################# Dataset parameter loader ######################
+def get_param(data_dir, param_name=None):
+    if 'YCBV' in data_dir:
+        import utils.YCBV_parameter as p
+    else:
+        import utils.LM_parameter as p
+    if param_name:
+        return p.DATA_PARAM[param_name]
+    else:
+        return p.DATA_PARAM

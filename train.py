@@ -11,11 +11,13 @@ import data_loader.data_loaders as module_data
 import model.loss as module_loss
 import model.metric as module_metric
 import model.model as module_arch
+import model.error as module_error
 from parse_config import ConfigParser
 from trainer import Trainer
-from utils import prepare_device
+from utils import prepare_device, build_ref
 import os
 import test
+from pathlib import Path
 
 # fix random seeds for reproducibility
 SEED = 123
@@ -33,13 +35,12 @@ def main(config):
 
     # prepare for (multi-device) GPU training
     device, device_ids = prepare_device(config['gpu_id'])
-    
     logger = config.get_logger('train')
 
     # set repeated args required
     config['data_loader']['args']['img_ratio'] = config['arch']['args']['img_ratio']
     config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
-    config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
+    config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list']
     config['arch']['args']['device'] = device
     config['data_loader']['args']['batch_size'] = len(device_ids) * config['data_loader']['args']['batch_size']
 
@@ -47,6 +48,7 @@ def main(config):
     model = config.init_obj('arch', module_arch )
 
     # setup data_loader instances
+    print('Data Loader setting...')
     data_loader = config.init_obj('data_loader', module_data)
     if config['data_loader']['args']['test_as_valid']:
         test_args = config['data_loader']['args'].copy()
@@ -56,15 +58,15 @@ def main(config):
         valid_data_loader = data_loader.split_validation()
 
     # mesh loader
+    print('Mesh Loader setting...')
     mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
     ftr = {}
     ftr_mask = {}
-    obj_references = data_loader.select_reference()
-    for obj_id, references in obj_references.items():
+    for obj_id in config['mesh_loader']['args']['obj_list']:
         print(f'Generating Reference Feature of obj {obj_id}')
-        ftr[obj_id], ftr_mask[obj_id] = model.build_ref(references)
-        ftr[obj_id], ftr_mask[obj_id] = ftr[obj_id].to(device), ftr_mask[obj_id].to(device)
+        ref = data_loader.select_reference(obj_id)
+        ftr[obj_id], ftr_mask[obj_id] = build_ref(ref, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
     
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)
@@ -72,36 +74,41 @@ def main(config):
     
     # get function handles of loss and metrics
     criterion = getattr(module_loss, config['loss'])
+    valid_errors = [getattr(module_error, met) for met in config['valid_errors']]
     valid_metrics = [getattr(module_metric, met) for met in config['valid_metrics']]
+    test_errors = [getattr(module_error, met) for met in config['test_errors']]
     test_metrics = [getattr(module_metric, met) for met in config['test_metrics']]
 
     # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
     lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
-
-    trainer = Trainer(model, criterion, valid_metrics, test_metrics, optimizer,
-                      ftr, ftr_mask,
-                      config=config,
-                      device=device,
-                      data_loader=data_loader,
-                      mesh_loader=mesh_loader,
-                      valid_data_loader=valid_data_loader,
-                      lr_scheduler=lr_scheduler)
-
-    trainer.train()
-    test_dict = {
-        "data_loader": valid_data_loader,
-        "mesh_loader": mesh_loader,
-        "model": model,
-        "criterion": criterion,
-        "best_path": f"{trainer.best_dir}/model_best.pth",
-        "writer": trainer.writer.set_mode('test'),
-        "metric_ftns": test_metrics,
-        "ftr": ftr,
-        "ftr_mask": ftr_mask
+    material = {
+        "model" : model,
+        "criterion" : criterion,
+        "valid_error_ftns" : valid_errors,
+        "valid_metric_ftns" : valid_metrics,
+        "test_metric_ftns" : test_metrics,
+        "optimizer" : optimizer,
+        "ftr" : ftr,
+        "ftr_mask" : ftr_mask,
+        "device" : device,
+        "data_loader" : data_loader,
+        "mesh_loader" : mesh_loader,
+        "valid_data_loader" : valid_data_loader,
+        "lr_scheduler" : lr_scheduler,
+        "use_mesh" : config['mesh_loader']['args']['use_mesh']
     }
-    test.main(config, is_test=False, **test_dict)
+    trainer = Trainer(config, **material)
+    trainer.train()
+
+    material['data_loader'] = valid_data_loader
+    material["best_path"] = Path(f"{trainer.best_dir}/model_best.pth")
+    material['writer'] = trainer.writer.set_mode('test')
+    material['error_ftns'] = test_errors
+    material['metric_ftns'] = test_metrics
+
+    test.main(config, is_test=False, **material)
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
@@ -136,6 +143,7 @@ if __name__ == '__main__':
         CustomArgs(['--loss'], type=str, target='loss'),
         CustomArgs(['--lr_step_size'], type=int, target='lr_scheduler;args;step_size'),
         CustomArgs(['--epochs'], type=int, target='trainer;epochs'),
+        CustomArgs(['--use_mesh'], type=bool, target='mesh_loader;args;use_mesh'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

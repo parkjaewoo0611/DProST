@@ -1,20 +1,32 @@
 import numpy as np
 import torch
 from base import BaseTrainer
-from utils import inf_loop, MetricTracker, visualize
+from utils import inf_loop, MetricTracker, visualize, get_param
 from tqdm import tqdm
 
 class Trainer(BaseTrainer):
     """
     Trainer class
     """
-    def __init__(self, model, criterion, metric_ftns, test_metric_ftns, optimizer, ftr, ftr_mask, config, device,
-                 data_loader, mesh_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None):
-        super().__init__(model, criterion, metric_ftns, test_metric_ftns, optimizer, config)
-        self.config = config
+    def __init__(self, config, device, model, criterion, test_metric_ftns, valid_error_ftns, valid_metric_ftns, optimizer, ftr, ftr_mask, 
+                 data_loader, mesh_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None, use_mesh=False, **kwargs):
+        super().__init__(model, test_metric_ftns, optimizer, config)
         self.device = device
+        self.criterion = criterion
+        self.train_metrics = MetricTracker(writer=self.writer)
+        self.valid_metrics = MetricTracker(error_ftns=valid_error_ftns, metric_ftns=valid_metric_ftns, writer=self.writer)
+
+        self.ftr = ftr
+        self.ftr_mask = ftr_mask
+
         self.data_loader = data_loader
         self.mesh_loader = mesh_loader
+        self.valid_data_loader = valid_data_loader
+        self.do_validation = self.valid_data_loader is not None
+        
+        self.save_period = self.config['trainer']['save_period']
+        self.lr_scheduler = lr_scheduler
+        self.log_step = int(np.sqrt(data_loader.batch_size))
         if len_epoch is None:
             # epoch-based training
             self.len_epoch = len(self.data_loader)
@@ -22,16 +34,10 @@ class Trainer(BaseTrainer):
             # iteration-based training
             self.data_loader = inf_loop(data_loader)
             self.len_epoch = len_epoch
-        self.valid_data_loader = valid_data_loader
-        self.do_validation = self.valid_data_loader is not None
-        self.save_period = self.config['trainer']['save_period']
-        self.lr_scheduler = lr_scheduler
-        self.log_step = int(np.sqrt(data_loader.batch_size))
 
-        self.train_metrics = MetricTracker('loss', writer=self.writer)
-        self.valid_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
-        self.ftr = ftr
-        self.ftr_mask = ftr_mask
+        self.gpu_scheduler = self.config['gpu_scheduler']
+        self.DATA_PARAM = get_param(self.data_loader.data_dir)
+        self.use_mesh = use_mesh
 
     def _train_epoch(self, epoch):
         """
@@ -42,15 +48,22 @@ class Trainer(BaseTrainer):
         """
         self.model.train()
         self.model.mode = 'train'
-
-        for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(self.data_loader):
-            images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
-            ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
-            ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
-
+        self.train_metrics.reset()
+        
+        for batch_idx, (images, masks, _, obj_ids, bboxes, RTs, Ks, _) in enumerate(self.data_loader):
             self.optimizer.zero_grad()
-            output, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
-            P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
+            images, masks, bboxes, RTs, Ks = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device), Ks.to(self.device)
+            if self.use_mesh:
+                meshes = self.mesh_loader.batch_meshes(obj_ids)
+                ftrs = None
+                ftr_masks = None
+            else:
+                meshes = None
+                ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
+                ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
+
+            output, P = self.model(images, ftrs, ftr_masks, bboxes, Ks, RTs, meshes)
+
             if self.criterion.__name__ == 'point_matching_loss':
                 P['full_vertexes'] = torch.stack([self.mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
             loss = 0
@@ -60,7 +73,7 @@ class Trainer(BaseTrainer):
 
             self.optimizer.step()
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
-            self.train_metrics.update('loss', loss.detach().item(), write=True)
+            self.train_metrics.loss_update(loss.detach().item(), write=True)
 
             if batch_idx % self.log_step == 0:
                 self.logger.debug('({}) Train Epoch: {} {} Loss: {:.6f}  Best {}: {:.6f}'.format(
@@ -98,13 +111,20 @@ class Trainer(BaseTrainer):
         self.model.mode = 'valid'
         self.valid_metrics.reset()
         with torch.no_grad():
-            for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs) in enumerate(tqdm(self.valid_data_loader, disable=self.config['gpu_scheduler'])):
-                images, masks, bboxes, RTs = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device)
-                ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
-                ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
-                
-                output, P = self.model(images, ftrs, ftr_masks, bboxes, obj_ids, RTs)
-                P['vertexes'] = torch.stack([self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
+            for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs, Ks, K_origins) in enumerate(tqdm(self.valid_data_loader, disable=self.gpu_scheduler)):
+                images, masks, bboxes, RTs, Ks = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device), Ks.to(self.device)
+                if self.use_mesh:
+                    meshes = self.mesh_loader.batch_meshes(obj_ids)
+                    ftrs = None
+                    ftr_masks = None
+                else:
+                    meshes = None
+                    ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
+                    ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
+
+                output, P = self.model(images, ftrs, ftr_masks, bboxes, Ks, RTs, meshes)
+
+                P['vertexes'] = [self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids]
                 if self.criterion.__name__ == 'point_matching_loss':
                     P['full_vertexes'] = torch.stack([self.mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
 
@@ -112,29 +132,30 @@ class Trainer(BaseTrainer):
                 for idx in list(output.keys())[1:]:
                     loss += self.criterion(RTs, output[idx], **P)
                 self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
-                self.valid_metrics.update('loss', loss.detach().item(), write=False)
+                self.valid_metrics.loss_update(loss.detach().item(), write=False)
                 M = {
                     'out_RT' : output[list(output.keys())[-1]]['RT'],
                     'gt_RT' : RTs,
+                    'K' : K_origins,
                     'ids' : obj_ids,
                     'points' : P['vertexes'],
-                    'depth_maps' : depths
+                    'depth_maps' : depths,
+                    'DATA_PARAM' : self.DATA_PARAM
                 }
-                for met in self.metric_ftns:
-                    self.valid_metrics.update(met.__name__, met(**M), write=False)
+
+                for err in self.valid_metrics._error_ftns:
+                    self.valid_metrics.update(err.__name__, err(**M))
+                self.valid_metrics.update('diameter', [self.DATA_PARAM['idx2diameter'][id] for id in obj_ids.tolist()])
 
             c, g = visualize(RTs, output, P)
             self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
             self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
 
-        # add histogram of model parameters to the tensorboard
-        # for name, p in self.model.named_parameters():
-        #     self.writer.add_histogram(name, p, bins='auto')
-        for met in self.metric_ftns:
-            v = self.valid_metrics.avg(met.__name__)
-            self.writer.add_scalar(met.__name__, v)
+        result = self.valid_metrics.result()
+        for k, v in result.items():
+            self.writer.add_scalar(k, v)
 
-        return self.valid_metrics.result()
+        return result
 
     def _progress(self, batch_idx):
         base = '[{}/{} ({:.0f}%)]'

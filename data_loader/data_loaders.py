@@ -5,8 +5,7 @@ import torch
 import numpy as np
 import pickle
 from base import BaseDataLoader
-from utils.util import farthest_rotation_sampling, resize_short_edge
-from utils.LM_parameter import LM_idx2radius, LM_idx2synradius
+from utils.util import farthest_rotation_sampling, resize_short_edge, get_param
 import random
 import torch.utils.data.dataset
 import glob
@@ -22,6 +21,7 @@ class DataLoader(BaseDataLoader):
         W = int(640 * img_ratio)
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Resize(size=(H, W))])
         self.data_dir = data_dir
+        self.idx2radius = get_param(data_dir, 'idx2radius')
         self.img_ratio = img_ratio
         self.training = training
         self.reference_N = reference_N
@@ -53,7 +53,10 @@ class DataLoader(BaseDataLoader):
             with open(os.path.join(self.data_dir, f'{file_syn}.pickle'), 'rb') as f:
                 dataset_syn = pickle.load(f)
             dataset_syn = [batch for i, batch in enumerate(dataset_syn) if batch['obj_id'] in self.obj_list]
-            self.dataset_syn = [batch for i, batch in enumerate(dataset_syn) if batch['visib_fract'] > 0.2]
+            self.dataset_syn = [batch for i, batch in enumerate(dataset_syn) if batch['visib_fract'] > 0.0]
+            self.obj_syn_dataset = {}
+            for obj in self.obj_list:
+                self.obj_syn_dataset[obj] = [batch for i, batch in enumerate(self.dataset_syn) if batch['obj_id'] is obj]
 
         self.obj_dataset = {}
         for obj in self.obj_list:
@@ -77,13 +80,17 @@ class DataLoader(BaseDataLoader):
         depths = []
         obj_ids = []
         RTs = []
+        Ks = []
+        K_origins = []
         masks = []
         bboxes = []
         for idx, batch_sample in enumerate(data):
             image = self.load_img(batch_sample['image'])
             obj_id = batch_sample['obj_id']
             RT = batch_sample['RT'].copy()
-            RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
+            RT[:3, 3] = RT[:3, 3] / self.idx2radius[batch_sample['obj_id']]
+            K_origin = batch_sample['K']
+            K = np.diag([self.img_ratio, self.img_ratio, 1]) @ K_origin
             if batch_sample['depth'] is not None:
                 depth = self.load_img(batch_sample['depth'])* batch_sample['depth_scale']
             else:
@@ -97,10 +104,12 @@ class DataLoader(BaseDataLoader):
             if self.training or reference:
                 bbox = np.array(batch_sample['bbox_obj'].copy()) * self.img_ratio
             else:
-                bbox = np.array(batch_sample['bbox_faster'].copy()) * self.img_ratio    # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
+                bbox = np.array(batch_sample['bbox_test'].copy()) * self.img_ratio    # 'bbox_obj', 'bbox_yolo', 'bbox_faster'
             images.append(self.transform(image))
             obj_ids.append(torch.tensor(obj_id))
             RTs.append(torch.tensor(RT, dtype=torch.float32))
+            Ks.append(torch.tensor(K, dtype=torch.float32))
+            K_origins.append(torch.tensor(K_origin, dtype=torch.float32))
             depths.append(torch.tensor(depth, dtype=torch.float32))
             masks.append(self.transform(mask))
             bboxes.append(torch.tensor(bbox, dtype=torch.float32))
@@ -111,10 +120,12 @@ class DataLoader(BaseDataLoader):
                 image = self.load_img(batch_sample['image'])
                 obj_id = batch_sample['obj_id']
                 RT = batch_sample['RT'].copy()
+                K_origin = batch_sample['K']
+                K = np.diag([self.img_ratio, self.img_ratio, 1]) @ K_origin.copy()
                 if self.is_pbr:
-                    RT[:3, 3] = RT[:3, 3] / LM_idx2radius[batch_sample['obj_id']]
+                    RT[:3, 3] = RT[:3, 3] / self.idx2radius[batch_sample['obj_id']]
                 else:
-                    RT[:3, 3] = RT[:3, 3] / LM_idx2synradius[batch_sample['obj_id']]
+                    RT[:3, 3] = RT[:3, 3] / self.idx2radius[batch_sample['obj_id']] / 1000
 
                 if batch_sample['depth'] is not None:
                     depth = self.load_img(batch_sample['depth'])* batch_sample['depth_scale']
@@ -136,6 +147,8 @@ class DataLoader(BaseDataLoader):
                 images.append(self.transform(image))
                 obj_ids.append(torch.tensor(obj_id))
                 RTs.append(torch.tensor(RT, dtype=torch.float32))
+                Ks.append(torch.tensor(K, dtype=torch.float32))
+                K_origins.append(torch.tensor(K_origin, dtype=torch.float32))
                 depths.append(torch.tensor(depth, dtype=torch.float32))
                 masks.append(self.transform(mask))
                 bboxes.append(torch.tensor(bbox, dtype=torch.float32))
@@ -143,31 +156,36 @@ class DataLoader(BaseDataLoader):
         images = torch.stack(images)
         obj_ids = torch.stack(obj_ids)
         RTs = torch.stack(RTs)
+        Ks = torch.stack(Ks)
+        K_origins = torch.stack(K_origins)
         depths = torch.stack(depths)
         masks = torch.stack(masks)
         bboxes = torch.stack(bboxes)
-        return images, masks, depths, obj_ids, bboxes, RTs
+        return images, masks, depths, obj_ids, bboxes, RTs, Ks, K_origins
 
     def load_img(self, path):
         return np.array(Image.open(path))
 
-    def select_reference(self):
+    def select_reference(self, obj_id):
         ##### for reference
-        references = {}
-        for obj_id in self.obj_list:
+        if self.is_pbr and ('YCBV' in self.data_dir):
+            obj_dataset = self.obj_syn_dataset[obj_id]
+            obj_dataset = [s for i, s in enumerate(obj_dataset) if s['visib_fract'] > 0.95]
+        else:
             obj_dataset = self.obj_dataset[obj_id]
-            if self.FPS:
-                ref = farthest_rotation_sampling(obj_dataset, self.reference_N)
-            else:
-                ref = random.sample(obj_dataset, self.reference_N)
-            images, masks, _, _, bboxes, RTs = self.collate_fn(ref, True)
-            references[obj_id] = {
-                'images': images,
-                'masks': masks,
-                'bboxes': bboxes,
-                'RTs': RTs
-            }
-        return references
+        if self.FPS:
+            ref = farthest_rotation_sampling(obj_dataset, self.reference_N)
+        else:
+            ref = random.sample(obj_dataset, self.reference_N)
+        images, masks, _, _, bboxes, RTs, Ks, _ = self.collate_fn(ref, True)
+        reference = {
+            'images': images,
+            'masks': masks,
+            'bboxes': bboxes,
+            'RTs': RTs,
+            'Ks': Ks
+        }
+        return reference
 
     def replace_bg(self, im, im_mask, return_mask=False):
         ## editted from GDR-Net git https://github.com/THU-DA-6D-Pose-Group/GDR-Net/core/base_data_loader.py

@@ -135,22 +135,34 @@ UW = {
 UW['K'] = np.array([[UW['fx'],  0,        UW['px']],
                     [0,         UW['fy'], UW['py']],
                     [0,         0,        1]])
-
-# parameters for metric function
-from utils.bop_toolkit.bop_toolkit_lib import renderer
-import os
-TAUS = list(np.arange(0.05, 0.51, 0.05))
 WIDTH = 640
 HEIGHT = 480
 
-# vsd parameters from bop_toolkit.bop_toolkit_lib.eval_calc_scores
-VSD_DELTA = 15
-VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
-VSD_NORMALIZED_BY_DIAMETER = True
-VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
+# # parameters for metric function
+# from utils.bop_toolkit.bop_toolkit_lib import renderer
+# import os
+# TAUS = list(np.arange(0.05, 0.51, 0.05))
+# # vsd parameters from bop_toolkit.bop_toolkit_lib.eval_calc_scores
+# VSD_DELTA = 15
+# VSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
+# VSD_NORMALIZED_BY_DIAMETER = True
+# VSD_REN = renderer.create_renderer(WIDTH, HEIGHT, 'vispy', mode='depth')
+# for obj_id in idx2class.keys():
+#     VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
+# MSSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
+# MSPD_THRESHOLD = np.arange(5, 51, 5)[:, np.newaxis] * WIDTH/640
 
-for obj_id in idx2class.keys():
-    VSD_REN.add_object(obj_id, os.path.join(obj_path, f'obj_{obj_id:06d}.ply'))
-
-MSSD_THRESHOLD = np.arange(0.05, 0.51, 0.05)[:, np.newaxis]
-MSPD_THRESHOLD = np.arange(5, 51, 5)[:, np.newaxis] * WIDTH/640
+DATA_PARAM = {
+        'idx2symmetry' : idx2class,
+        'idx2diameter' : idx2diameter,
+        'idx2radius' : idx2radius,
+        'idx2syms' : idx2syms,
+        'idx2class' : idx2class,
+        # 'taus' : TAUS,
+        # 'vsd_delta' : VSD_DELTA,
+        # 'vsd_threshold' : VSD_THRESHOLD,
+        # 'vsd_normalized_by_diameter' : VSD_NORMALIZED_BY_DIAMETER,
+        # 'vsd_ren' : VSD_REN,
+        # 'mssd_threshold' : MSSD_THRESHOLD,
+        # 'mspd_threshold' : MSPD_THRESHOLD
+    }

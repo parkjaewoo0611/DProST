@@ -8,13 +8,11 @@ class BaseTrainer:
     """
     Base class for all trainers
     """
-    def __init__(self, model, criterion, metric_ftns, test_metric_ftns, optimizer, config):
+    def __init__(self, model, test_metric_ftns, optimizer, config):
         self.config = config
         self.logger = config.get_logger('trainer', config['trainer']['verbosity'])
 
         self.model = model
-        self.criterion = criterion
-        self.metric_ftns = metric_ftns
         self.optimizer = optimizer
 
         cfg_trainer = config['trainer']
@@ -39,7 +37,7 @@ class BaseTrainer:
 
         self.checkpoint_dir = config.save_dir
         self.best_dir = config.save_dir
-        self.hparams = hparams_key(self.config.config)
+        self.hparams = hparams_key(config.config)
         self.hparams_result = {met.__name__: 0 for met in test_metric_ftns}
         self.hparams_result['current_epoch'] = 0
         self.hparams_result['best_epoch'] = 0

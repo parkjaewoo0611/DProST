@@ -6,10 +6,8 @@ from pytorch3d.transforms import rotation_6d_to_matrix, quaternion_to_matrix
 from base import BaseModel
 from utils.util import (
     apply_imagespace_predictions, crop_inputs, RT_from_boxes, bbox_add_noise, 
-    carving_feature, dynamic_projective_stn, obj_visualize,
-    z_buffer_min, z_buffer_max, grid_sampler, get_roi_feature, ProST_grid
+    obj_visualize, reshape_grid, get_roi_feature, ProST_grid
 )
-from utils.LM_parameter import FX, FY, PX, PY
 class LocalizationNetwork(nn.Module):
     def __init__(self, model_name):
         super().__init__()
@@ -58,23 +56,21 @@ class DProST(BaseModel):
         self.device = device
 
         # Projective STN default grid with camera parameter
-        self.H = int(480 * img_ratio)
-        self.W = int(640 * img_ratio)
-        fx = FX * img_ratio
-        fy = FY * img_ratio 
-        px = PX * img_ratio
-        py = PY * img_ratio
-        self.K = torch.tensor([[fx,  0, px],
-                              [ 0, fy, py],
-                              [ 0,  0,  1]]).unsqueeze(0).to(self.device)
-        projstn_grid, coefficient = ProST_grid(self.H, self.W, (fx+fy)/2, px, py, N_z)
-        self.projstn_grid, self.coefficient = projstn_grid.to(self.device), coefficient.to(self.device)
-
+        self.img_ratio = img_ratio
+        self.H = int(480 * self.img_ratio)
+        self.W = int(640 * self.img_ratio)
+        self.N_z = N_z
         self.ftr_size = ftr_size
-        self.img_size = img_size
-
+        self.img_size = [img_size, img_size]
         self.iteration = iteration
         self.mode = mode
+
+        f_d = 1000
+        self.K_d = torch.tensor([[f_d,  0,  self.W//2],
+                                 [ 0,  f_d, self.H//2],
+                                 [ 0,  0,  1]]).unsqueeze(0).to(self.device)
+        XYZ = ProST_grid(self.H, self.W, f_d, self.W//2, self.H//2)
+        self.XYZ = XYZ.to(self.device)
 
         self.local_network = nn.ModuleDict()
         for i in range(1, self.iteration+1):
@@ -82,30 +78,16 @@ class DProST(BaseModel):
 
         self.vxvyvz_W_scaler = torch.tensor([self.W, 1, 1]).unsqueeze(0).to(self.device)
         self.vxvyvz_H_scaler = torch.tensor([1, self.H, 1]).unsqueeze(0).to(self.device)
+        
 
-
-    def build_ref(self, ref):
-        N_ref = ref['images'].shape[0]
-        K_batch = self.K.repeat(N_ref, 1, 1).detach().cpu()
-        projstn_grid = self.projstn_grid.repeat(N_ref, 1, 1, 1, 1).detach().cpu()
-        coefficient = self.coefficient.repeat(N_ref, 1, 1, 1, 1).detach().cpu()
-
-        _, _, ref['K_crop'], ref['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, ref['bboxes'], (self.ftr_size, self.ftr_size))
-        ref['roi_feature'] = get_roi_feature(ref['bboxes_crop'], ref['images'], (self.H, self.W), (self.ftr_size, self.ftr_size))
-        ref['roi_mask'] = get_roi_feature(ref['bboxes_crop'], ref['masks'], (self.H, self.W), (self.ftr_size, self.ftr_size))
-        ftr, ftr_mask = carving_feature(ref['roi_mask'], ref['roi_feature'], ref['RTs'], ref['K_crop'], self.ftr_size)
-        return ftr, ftr_mask
-
-
-    def forward(self, images, ftr, ftr_mask, bboxes, obj_ids, gt_RT=None):
-        bsz = images.shape[0]
-        K_batch = self.K.repeat(bsz, 1, 1).to(images.device)
-        projstn_grid = self.projstn_grid.repeat(bsz, 1, 1, 1, 1).to(images.device)
-        coefficient = self.coefficient.repeat(bsz, 1, 1, 1, 1).to(images.device)
+    def forward(self, images, ftr, ftr_mask, bboxes, K_batch, gt_RT=None, mesh=None):
+        projstn_grid, coefficient = reshape_grid(K_batch, self.K_d, self.XYZ, self.N_z)
         ####################### 3D feature module ###################################
         P = {
             'ftr': ftr, 
-            'ftr_mask': ftr_mask
+            'ftr_mask': ftr_mask,
+            'mesh': mesh,
+            'img_size': self.img_size,
         }
         pred = {}
 
@@ -115,13 +97,13 @@ class DProST(BaseModel):
         pred[0] = {'RT': RT_from_boxes(bboxes, K_batch).detach()}  
 
         ####################### DProST grid cropping #################################
-        P['grid_crop'], P['coeffi_crop'], P['K_crop'], P['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, (self.img_size, self.img_size))
+        P['grid_crop'], P['coeffi_crop'], P['K_crop'], P['bboxes_crop'] = crop_inputs(projstn_grid, coefficient, K_batch, bboxes, P['img_size'])
         ####################### crop from image ######################################s
-        P['roi_feature'] = get_roi_feature(P['bboxes_crop'], images, (self.H, self.W), (self.img_size, self.img_size))
+        P['roi_feature'] = get_roi_feature(P['bboxes_crop'], images, (self.H, self.W), P['img_size'])
         ####################### DProST grid push & transform #########################
         for i in range(1, self.iteration+1):
             ###### Dynamic Projective STN & sampling & z-buffering
-            pred[i-1]['proj'], pred[i-1]['dist'], pred[i-1]['grid'] = obj_visualize(pred[i-1]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+            pred[i-1]['proj'], pred[i-1]['dist'], pred[i-1]['grid'] = obj_visualize(pred[i-1]['RT'], **P)
             ###### Localization Network 
             loc_input = torch.cat((pred[i-1]['proj'], P['roi_feature']), 1)
             prediction = self.local_network[str(i)](loc_input.detach())
@@ -130,8 +112,8 @@ class DProST(BaseModel):
             pred[i] = {'RT': next_RT}
 
         if self.mode == 'train' or self.mode == 'valid':
-            pred[self.iteration]['proj'], pred[self.iteration]['dist'], pred[self.iteration]['grid'] = obj_visualize(pred[self.iteration]['RT'], P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
-            P['gt_proj'], P['gt_dist'], P['gt_grid'] = obj_visualize(gt_RT, P['grid_crop'], P['coeffi_crop'], P['ftr'], P['ftr_mask'])
+            pred[self.iteration]['proj'], pred[self.iteration]['dist'], pred[self.iteration]['grid'] = obj_visualize(pred[self.iteration]['RT'], **P)
+            P['gt_proj'], P['gt_dist'], P['gt_grid'] = obj_visualize(gt_RT, **P)
         return pred, P
 
     def update_pose(self, TCO, K_crop, pose_outputs):
