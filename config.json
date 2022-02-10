@@ -18,7 +18,7 @@
         "args":{
             "data_dir": "../Dataset/LINEMOD",
             "batch_size": 6,
-            "obj_list" : [1],
+            "obj_list" : [1, 2],
             "reference_N": 8,
             "is_pbr": true,
             "is_syn": false,
@@ -73,6 +73,7 @@
         "verbosity": 2,
         "monitor": "max val_ADD_S_10",
         "early_stop": 1000,
-        "tensorboard": true
+        "tensorboard": true,
+        "is_toy": false
     }
 }

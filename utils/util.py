@@ -51,38 +51,38 @@ def prepare_device(gpu_id):
 class MetricTracker:
     def __init__(self, error_ftns=[], metric_ftns=[], writer=None):
         self.writer = writer
-        self._loss = dict.fromkeys(['total', 'counts'], 0)
         self._error_ftns = error_ftns
         self._stack = {
             err.__name__: [] for err in error_ftns       # each error for each samples
         }
         self._stack['diameter'] = []
+        self._stack['id'] = []
         self._metric_ftns = metric_ftns
 
     def reset(self):
-        for key in self._loss.keys():
-            self._loss[key] = 0
         for key in self._stack.keys():
             self._stack[key] = []
     
     def loss_update(self, value, write, n=1):
         if write and self.writer is not None:
             self.writer.add_scalar('loss', value)
-        self._loss['total'] += value * n
-        self._loss['counts'] += n
-
-    def loss_avg(self):
-        return self._loss['total'] / self._loss['counts']
 
     def update(self, key, value):
         self._stack[key] += value       # stack errors and infos for each sample
 
-    def result(self):
-        _result = {
-            met.__name__ : met(**self._stack) for met in self._metric_ftns
-        }
-        if self._loss['counts'] > 0:
-            _result['loss'] = self.loss_avg()
+    def result(self, obj_id=None):
+        if obj_id == None:
+            _result = {
+                met.__name__ : met(**self._stack) for met in self._metric_ftns
+            }
+        else:
+            _obj_stack = {}
+            ind = [i for i, id in enumerate(self._stack['id']) if id == obj_id]
+            for k, v in self._stack.items():
+                _obj_stack[k] = [v[i] for i in ind]
+            _result = {
+                met.__name__ : met(**_obj_stack) for met in self._metric_ftns
+            }
         return _result
 
 ######################################################

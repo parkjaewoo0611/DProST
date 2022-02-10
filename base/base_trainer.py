@@ -37,15 +37,18 @@ class BaseTrainer:
 
         self.checkpoint_dir = config.save_dir
         self.best_dir = config.save_dir
-        self.hparams = hparams_key(config.config)
-        self.hparams_result = {met.__name__: 0 for met in test_metric_ftns}
-        self.hparams_result['current_epoch'] = 0
-        self.hparams_result['best_epoch'] = 0
         # setup visualization writer instance                
         self.writer = TensorboardWriter(config.log_dir, self.logger, cfg_trainer['tensorboard'])
 
         if config.resume is not None:
             self._resume_checkpoint(config.resume)
+
+        self.hparams = hparams_key(config.config)
+        self.hparams_result = {met.__name__: 0 for met in test_metric_ftns}
+        self.hparams_result['current_epoch'] = self.start_epoch
+        self.hparams_result['best_epoch'] = self.start_epoch
+        self.hparams_result[self.mnt_metric[4:]] = self.mnt_best
+        self.writer.add_hparams(self.hparams, self.hparams_result)
 
     @abstractmethod
     def _train_epoch(self, epoch):
@@ -76,7 +79,6 @@ class BaseTrainer:
             best = False
             if epoch % self.save_period == 0 and self.mnt_mode != 'off':
                 self.hparams_result['current_epoch'] = epoch
-                self.writer.add_hparams(self.hparams, self.hparams_result)
                 try:
                     # check whether model performance improved or not, according to specified metric(mnt_metric)
                     improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.mnt_best) or \
@@ -92,8 +94,6 @@ class BaseTrainer:
                         if 'val' in k:
                             self.hparams_result[k[4:]] = v
                     self.hparams_result['best_epoch'] = epoch
-                    self.writer.add_hparams(self.hparams, self.hparams_result)
-
                     self.mnt_best = log[self.mnt_metric]
                     not_improved_count = 0
                     best = True
@@ -105,6 +105,7 @@ class BaseTrainer:
                                      "Training stops.".format(self.early_stop))
                     break
 
+                self.writer.add_hparams(self.hparams, self.hparams_result)
                 self._save_checkpoint(epoch, save_best=best)
 
     def _save_checkpoint(self, epoch, save_best=False):

@@ -9,7 +9,8 @@ class Trainer(BaseTrainer):
     Trainer class
     """
     def __init__(self, config, device, model, criterion, test_metric_ftns, valid_error_ftns, valid_metric_ftns, optimizer, ftr, ftr_mask, 
-                 data_loader, mesh_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None, use_mesh=False, **kwargs):
+                 data_loader, mesh_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None, use_mesh=False, save_period=100, 
+                 gpu_scheduler=False, is_toy=False, **kwargs):
         super().__init__(model, test_metric_ftns, optimizer, config)
         self.device = device
         self.criterion = criterion
@@ -24,7 +25,7 @@ class Trainer(BaseTrainer):
         self.valid_data_loader = valid_data_loader
         self.do_validation = self.valid_data_loader is not None
         
-        self.save_period = self.config['trainer']['save_period']
+        self.save_period = save_period
         self.lr_scheduler = lr_scheduler
         self.log_step = int(np.sqrt(data_loader.batch_size))
         if len_epoch is None:
@@ -35,9 +36,10 @@ class Trainer(BaseTrainer):
             self.data_loader = inf_loop(data_loader)
             self.len_epoch = len_epoch
 
-        self.gpu_scheduler = self.config['gpu_scheduler']
+        self.gpu_scheduler = gpu_scheduler
         self.DATA_PARAM = get_param(self.data_loader.data_dir)
         self.use_mesh = use_mesh
+        self.is_toy = is_toy
 
     def _train_epoch(self, epoch):
         """
@@ -85,6 +87,8 @@ class Trainer(BaseTrainer):
                     self.mnt_best))
 
             if batch_idx == self.len_epoch:
+                break
+            if self.is_toy and batch_idx==5:
                 break
         log = self.train_metrics.result()
 
@@ -146,6 +150,9 @@ class Trainer(BaseTrainer):
                 for err in self.valid_metrics._error_ftns:
                     self.valid_metrics.update(err.__name__, err(**M))
                 self.valid_metrics.update('diameter', [self.DATA_PARAM['idx2diameter'][id] for id in obj_ids.tolist()])
+                self.valid_metrics.update('id', obj_ids.tolist())
+                if self.is_toy and batch_idx==5:
+                    break
 
             c, g = visualize(RTs, output, P)
             self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))

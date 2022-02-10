@@ -97,7 +97,10 @@ def main(config):
         "mesh_loader" : mesh_loader,
         "valid_data_loader" : valid_data_loader,
         "lr_scheduler" : lr_scheduler,
-        "use_mesh" : config['mesh_loader']['args']['use_mesh']
+        "use_mesh" : config['mesh_loader']['args']['use_mesh'],
+        "save_period": config['trainer']['save_period'],
+        "is_toy": config['trainer']['is_toy'],
+        "gpu_scheduler": config['gpu_scheduler']
     }
     trainer = Trainer(config, **material)
     trainer.train()
@@ -120,7 +123,7 @@ if __name__ == '__main__':
                       help='indices of GPUs to enable (default: all)')
     args.add_argument('-v', '--visualize', default=False, type=str2bool,
                       help='visualize results in result folder')
-    args.add_argument('--result_path', default=None, type=str,
+    args.add_argument('-p', '--result_path', default=None, type=str,
                       help='result saved path')
     # custom cli options to modify configuration from default values given in json file.
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
@@ -143,7 +146,9 @@ if __name__ == '__main__':
         CustomArgs(['--loss'], type=str, target='loss'),
         CustomArgs(['--lr_step_size'], type=int, target='lr_scheduler;args;step_size'),
         CustomArgs(['--epochs'], type=int, target='trainer;epochs'),
+        CustomArgs(['--save_period'], type=int, target='trainer;save_period'),
         CustomArgs(['--use_mesh'], type=bool, target='mesh_loader;args;use_mesh'),
+        CustomArgs(['--is_toy'], type=bool, target='trainer;is_toy'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

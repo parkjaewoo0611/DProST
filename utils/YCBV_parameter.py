@@ -153,7 +153,7 @@ HEIGHT = 480
 # MSPD_THRESHOLD = np.arange(5, 51, 5)[:, np.newaxis] * WIDTH/640
 
 DATA_PARAM = {
-        'idx2symmetry' : idx2class,
+        'idx2symmetry' : idx2symmetry,
         'idx2diameter' : idx2diameter,
         'idx2radius' : idx2radius,
         'idx2syms' : idx2syms,

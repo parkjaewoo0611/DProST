@@ -269,3 +269,4 @@ class DataLoader(BaseDataLoader):
         h, w, c = bg_image_resize_0.shape
         bg_image_resize[0:h, 0:w, :] = bg_image_resize_0
         return bg_image_resize
+

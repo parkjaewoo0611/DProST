@@ -75,6 +75,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             print(f'Generating Reference Feature of obj {obj_id}')
             ref = data_loader.select_reference(obj_id)
             ftr[obj_id], ftr_mask[obj_id] = build_ref(ref, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
+        use_mesh = config['mesh_loader']['args']['use_mesh']
 
     test_metrics = MetricTracker(error_ftns=error_ftns, metric_ftns=metric_ftns)
 
@@ -90,7 +91,6 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
 
     # set iteration setting
     model.iteration = config["arch"]["args"]["iteration"]
-
 
     with torch.no_grad():
         for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs, Ks, K_origins) in enumerate(tqdm(data_loader, disable=config['gpu_scheduler'])):
@@ -122,6 +122,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             for err in test_metrics._error_ftns:
                 test_metrics.update(err.__name__, err(**M))
             test_metrics.update('diameter', [DATA_PARAM['idx2diameter'][id] for id in obj_ids.tolist()])
+            test_metrics.update('id', obj_ids.tolist())
 
             #### visualize images
             if is_test and config["visualize"]:
@@ -129,19 +130,20 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
                 plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
 
-    log = {}
-    log.update({
-        k : v for k, v in test_metrics.result().items()
-    })
-    logger.info(log)
-    
-    result_csv_path = list(best_path.parts)
-    result_csv_path[1], result_csv_path[-1] = 'log', 'test_result.csv'
-    result_csv_path = os.path.join(*result_csv_path)
-    with open(result_csv_path, "w") as csv_file:
-        metric_csv = csv.writer(csv_file)
-        for k, v in log.items():
-            metric_csv.writerow([k, v])
+    for obj_test in config['data_loader']['args']['obj_list']:
+        log = {}
+        log.update({
+            k : v for k, v in test_metrics.result(obj_test).items()
+        })
+        logger.info(log)
+        
+        result_csv_path = list(best_path.parts)
+        result_csv_path[1], result_csv_path[-1] = 'log', f'test_result_{obj_test}.csv'
+        result_csv_path = os.path.join(*result_csv_path)
+        with open(result_csv_path, "w") as csv_file:
+            metric_csv = csv.writer(csv_file)
+            for k, v in log.items():
+                metric_csv.writerow([k, v])
 
     if not is_test:
         hparams = hparams_key(config.config)
