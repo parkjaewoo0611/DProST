@@ -18,7 +18,7 @@
         "args":{
             "data_dir": "../Dataset/LINEMOD",
             "batch_size": 6,
-            "obj_list" : [1, 2],
+            "obj_list" : [1],
             "reference_N": 8,
             "is_pbr": true,
             "is_syn": false,

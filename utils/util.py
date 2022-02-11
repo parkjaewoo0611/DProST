@@ -577,7 +577,7 @@ def camera_update(K, R, T, size):
 
 def meshes_visualize(K, RT, size, mesh):
     RT = RT_to_pytorch3d_RT(RT)
-    phong_renderer = camera_update(K, RT[:, :3, :3], RT[:, 3, :3], size).to(RT.device)
+    phong_renderer = camera_update(K, RT[:, :3, :3], RT[:, 3, :3], size.tolist()).to(RT.device)
     phong = phong_renderer(meshes_world=mesh)[..., :3].permute(0, 3, 1, 2) / 255.0
     return phong
 
