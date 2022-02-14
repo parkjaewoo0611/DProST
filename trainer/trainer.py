@@ -53,7 +53,6 @@ class Trainer(BaseTrainer):
         self.train_metrics.reset()
         
         for batch_idx, (images, masks, _, obj_ids, bboxes, RTs, Ks, _) in enumerate(self.data_loader):
-            self.optimizer.zero_grad()
             images, masks, bboxes, RTs, Ks = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device), Ks.to(self.device)
             if self.use_mesh:
                 meshes = self.mesh_loader.batch_meshes(obj_ids)
@@ -63,7 +62,8 @@ class Trainer(BaseTrainer):
                 meshes = None
                 ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
                 ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
-
+            
+            self.optimizer.zero_grad()
             output, P = self.model(images, ftrs, ftr_masks, bboxes, Ks, RTs, meshes)
 
             if self.criterion.__name__ == 'point_matching_loss':
