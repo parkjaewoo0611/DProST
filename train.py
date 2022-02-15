@@ -14,10 +14,11 @@ import model.model as module_arch
 import model.error as module_error
 from parse_config import ConfigParser
 from trainer import Trainer
-from utils import prepare_device, build_ref
+from utils.util import prepare_device, build_ref, farthest_rotation_sampling
 import os
 import test
 from pathlib import Path
+import random
 
 # fix random seeds for reproducibility
 SEED = 123
@@ -52,7 +53,7 @@ def main(config):
     data_loader = config.init_obj('data_loader', module_data)
     if config['data_loader']['args']['test_as_valid']:
         test_args = config['data_loader']['args'].copy()
-        test_args['shuffle'], test_args['training'], test_args['validation_split'] = False, False, 0.0
+        test_args['shuffle'], test_args['training'], test_args['validation_split'], test_args['num_workers'] = False, False, 0.0, 0
         valid_data_loader = getattr(module_data, config['data_loader']['type'])(**test_args)
     else:
         valid_data_loader = data_loader.split_validation()
@@ -65,8 +66,17 @@ def main(config):
     ftr_mask = {}
     for obj_id in config['mesh_loader']['args']['obj_list']:
         print(f'Generating Reference Feature of obj {obj_id}')
-        ref = data_loader.select_reference(obj_id)
-        ftr[obj_id], ftr_mask[obj_id] = build_ref(ref, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
+        if data_loader.is_pbr and ('YCBV' in data_loader.dataset.data_dir):
+            ref_dataset = data_loader.syn_dataset
+        else:
+            ref_dataset = data_loader.dataset
+
+        if config['data_loader']['args']['FPS']:
+            ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['data_loader']['args']['reference_N'])
+        else:
+            ref_idx = random.sample(ref_dataset.dataset, config['data_loader']['args']['reference_N'])
+
+        ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
     
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)

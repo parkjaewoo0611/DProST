@@ -99,6 +99,8 @@ from torchvision.ops import roi_align
 from torchvision.utils import make_grid
 import cv2
 from flatten_dict import flatten
+import random
+from PIL import Image
 
 def R_T_to_RT(R, T):
     if R.dtype == np.float64:
@@ -507,19 +509,25 @@ def visualize(RTs, output, P):
 
 ########################################### reference function ######################################################
 
-def farthest_rotation_sampling(dataset, N):
+def farthest_rotation_sampling(dataset, obj_id, N):
+    """
+    return idx of reference samples
+    """
     farthest_idx = np.zeros(N).astype(int)
-    farthest_Rs = np.zeros([N, 3, 3])
-    Rs = torch.tensor(np.stack([data['RT'][:3, :3] for data in dataset]))
-    mask_pixel_N = [data['px_count_visib'] for data in dataset]
-    farthest_idx[0] = np.array(mask_pixel_N).argmax()
-    farthest_Rs[0] = Rs[int(farthest_idx[0])]
-    distances = so3_relative_angle(torch.tensor(farthest_Rs[0]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs)
+
+    obj_dataset = [(i, sample) for i, sample in enumerate(dataset) if (sample['visib_fract'] > 0.95) and (sample['obj_id'] == obj_id)]
+    Rs = torch.tensor(np.stack([data[1]['RT'][:3, :3] for data in obj_dataset]))
+    mask_pixel_N = [data[1]['px_count_visib'] for data in obj_dataset]
+    obj_index = np.array(mask_pixel_N).argmax()
+    farthest_idx[0] = obj_dataset[obj_index][0]
+    farthest_R = torch.tensor(Rs[obj_index][None])
+    distances = so3_relative_angle(torch.tensor(farthest_R).repeat(Rs.shape[0], 1, 1), Rs)
     for i in range(1, N):
-        farthest_idx[i] = torch.argmax(distances)
-        farthest_Rs[i] = Rs[int(farthest_idx[i])]
-        distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_Rs[i]).unsqueeze(0).repeat(Rs.shape[0], 1, 1), Rs))
-    return [dataset[idx] for idx in list(farthest_idx)]
+        obj_index = torch.argmax(distances).item()
+        farthest_idx[i] = obj_dataset[obj_index][0]
+        farthest_R = torch.tensor(Rs[obj_index][None])
+        distances = torch.minimum(distances, so3_relative_angle(torch.tensor(farthest_R).repeat(Rs.shape[0], 1, 1), Rs))
+    return farthest_idx
 
 def carving_feature(masks, features, RT, K_crop, ftr_size):
     N_ref = features.shape[0]
@@ -549,8 +557,9 @@ def carving_feature(masks, features, RT, K_crop, ftr_size):
     ftr_3d = ftr_3d.transpose(2, 4)                    # XYZ to ZYX (DHW)
     return ftr_3d, ftr_mask_3d
 
-def build_ref(ref, K_d, XYZ, N_z, ftr_size, H, W):
-    ref = {k : v.to(XYZ.device) for k, v in ref.items()}
+def build_ref(ref_dataset, ref_idx, K_d, XYZ, N_z, ftr_size, H, W):
+    keys = ['Ks', 'bboxes', 'images', 'masks', 'RTs']
+    ref = {k : torch.stack([ref_dataset[idx][k].to(XYZ.device) for idx in ref_idx]) for k in keys}
     projstn_grid, coefficient = reshape_grid(ref['Ks'], K_d, XYZ, N_z)
     _, _, K_crop, bboxes_crop = crop_inputs(projstn_grid, coefficient, ref['Ks'], ref['bboxes'], (ftr_size, ftr_size))
     roi_feature = get_roi_feature(bboxes_crop, ref['images'], (H, W), (ftr_size, ftr_size))
@@ -582,6 +591,89 @@ def meshes_visualize(K, RT, size, mesh):
     return phong
 
 ############################################### background substiture function ####################################
+
+def replace_bg(im, im_mask, bg_img_paths, return_mask=False):
+    ## editted from GDR-Net git https://github.com/THU-DA-6D-Pose-Group/GDR-Net/core/base_data_loader.py
+    # add background to the image
+    H, W = im.shape[:2]
+    ind = random.randint(0, len(bg_img_paths) - 1)
+    filename = bg_img_paths[ind]
+    bg_img = get_bg_image(filename, H, W)
+
+    if len(bg_img.shape) != 3:
+        bg_img = np.zeros((H, W, 3), dtype=np.uint8)
+
+    mask = im_mask.copy().astype(np.bool)
+    nonzeros = np.nonzero(mask.astype(np.uint8))
+    x1, y1 = np.min(nonzeros, axis=1)
+    x2, y2 = np.max(nonzeros, axis=1)
+    c_h = 0.5 * (x1 + x2)
+    c_w = 0.5 * (y1 + y2)
+    rnd = random.random()
+    # print(x1, x2, y1, y2, c_h, c_w, rnd, mask.shape)
+    if rnd < 0.2:  # block upper
+        c_h_ = int(random.uniform(x1, c_h))
+        mask[:c_h_, :] = False
+    elif rnd < 0.4:  # block bottom
+        c_h_ = int(random.uniform(c_h, x2))
+        mask[c_h_:, :] = False
+    elif rnd < 0.6:  # block left
+        c_w_ = int(random.uniform(y1, c_w))
+        mask[:, :c_w_] = False
+    elif rnd < 0.8:  # block right
+        c_w_ = int(random.uniform(c_w, y2))
+        mask[:, c_w_:] = False
+    else:
+        pass
+    mask_bg = ~mask
+    im[mask_bg] = bg_img[mask_bg]
+    im = im.astype(np.uint8)
+    if return_mask:
+        return im, mask  # bool fg mask
+    else:
+        return im
+
+
+def get_bg_image(filename, imH, imW, channel=3):
+    ## editted from GDR-Net git https://github.com/THU-DA-6D-Pose-Group/GDR-Net/core/base_data_loader.py
+    """keep aspect ratio of bg during resize target image size:
+
+    imHximWxchannel.
+    """
+    target_size = min(imH, imW)
+    max_size = max(imH, imW)
+    real_hw_ratio = float(imH) / float(imW)
+    bg_image = np.array(Image.open(filename))
+
+    bg_h, bg_w, bg_c = bg_image.shape
+    bg_image_resize = np.zeros((imH, imW, channel), dtype="uint8")
+    if (float(imH) / float(imW) < 1 and float(bg_h) / float(bg_w) < 1) or (
+        float(imH) / float(imW) >= 1 and float(bg_h) / float(bg_w) >= 1
+    ):
+        if bg_h >= bg_w:
+            bg_h_new = int(np.ceil(bg_w * real_hw_ratio))
+            if bg_h_new < bg_h:
+                bg_image_crop = bg_image[0:bg_h_new, 0:bg_w, :]
+            else:
+                bg_image_crop = bg_image
+        else:
+            bg_w_new = int(np.ceil(bg_h / real_hw_ratio))
+            if bg_w_new < bg_w:
+                bg_image_crop = bg_image[0:bg_h, 0:bg_w_new, :]
+            else:
+                bg_image_crop = bg_image
+    else:
+        if bg_h >= bg_w:
+            bg_h_new = int(np.ceil(bg_w * real_hw_ratio))
+            bg_image_crop = bg_image[0:bg_h_new, 0:bg_w, :]
+        else:  # bg_h < bg_w
+            bg_w_new = int(np.ceil(bg_h / real_hw_ratio))
+            # logger.info(bg_w_new)
+            bg_image_crop = bg_image[0:bg_h, 0:bg_w_new, :]
+    bg_image_resize_0 = resize_short_edge(bg_image_crop, target_size, max_size)
+    h, w, c = bg_image_resize_0.shape
+    bg_image_resize[0:h, 0:w, :] = bg_image_resize_0
+    return bg_image_resize
 
 def resize_short_edge(im, target_size, max_size, stride=0, interpolation=cv2.INTER_LINEAR, return_scale=False):
     ## editted from GDR-Net git https://github.com/THU-DA-6D-Pose-Group/GDR-Net/core/base_data_loader.py

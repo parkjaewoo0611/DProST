@@ -37,7 +37,7 @@ class Trainer(BaseTrainer):
             self.len_epoch = len_epoch
 
         self.gpu_scheduler = gpu_scheduler
-        self.DATA_PARAM = get_param(self.data_loader.data_dir)
+        self.DATA_PARAM = get_param(self.data_loader.dataset.data_dir)
         self.use_mesh = use_mesh
         self.is_toy = is_toy
 
@@ -52,10 +52,11 @@ class Trainer(BaseTrainer):
         self.model.mode = 'train'
         self.train_metrics.reset()
         
-        for batch_idx, (images, masks, _, obj_ids, bboxes, RTs, Ks, _) in enumerate(self.data_loader):
-            images, masks, bboxes, RTs, Ks = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device), Ks.to(self.device)
+        for batch_idx, batch in enumerate(self.data_loader):
+            images, bboxes, RTs, Ks = batch['images'].to(self.device), batch['bboxes'].to(self.device), batch['RTs'].to(self.device), batch['Ks'].to(self.device)
+            obj_ids = batch['obj_ids']
             if self.use_mesh:
-                meshes = self.mesh_loader.batch_meshes(obj_ids)
+                meshes = self.mesh_loader.batch_meshes(obj_ids.tolist())
                 ftrs = None
                 ftr_masks = None
             else:
@@ -115,8 +116,10 @@ class Trainer(BaseTrainer):
         self.model.mode = 'valid'
         self.valid_metrics.reset()
         with torch.no_grad():
-            for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs, Ks, K_origins) in enumerate(tqdm(self.valid_data_loader, disable=self.gpu_scheduler)):
-                images, masks, bboxes, RTs, Ks = images.to(self.device), masks.to(self.device), bboxes.to(self.device), RTs.to(self.device), Ks.to(self.device)
+            for batch_idx, batch in enumerate(tqdm(self.valid_data_loader, disable=self.gpu_scheduler)):
+                images, bboxes, RTs, Ks = batch['images'].to(self.device), batch['bboxes'].to(self.device), batch['RTs'].to(self.device), batch['Ks'].to(self.device)
+                obj_ids, depths, K_origins = batch['obj_ids'], batch['depths'], batch['K_origins']
+                
                 if self.use_mesh:
                     meshes = self.mesh_loader.batch_meshes(obj_ids)
                     ftrs = None

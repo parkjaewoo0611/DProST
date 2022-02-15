@@ -54,7 +54,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             shuffle=False,
             validation_split=0.0,
             training=False,
-            num_workers=4,
+            num_workers=0,
             FPS=config['data_loader']['args']['FPS']
         )
         mesh_loader = config.init_obj('mesh_loader', module_mesh)
@@ -68,13 +68,28 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
 
         metric_ftns = [getattr(module_metric, met) for met in config['test_metrics']]
         error_ftns = [getattr(module_error, met) for met in config['test_errors']]
-
+        
         ftr = {}
         ftr_mask = {}
         for obj_id in config['mesh_loader']['args']['obj_list']:
             print(f'Generating Reference Feature of obj {obj_id}')
-            ref = data_loader.select_reference(obj_id)
-            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
+            if data_loader.is_pbr and ('YCBV' in data_loader.dataset.data_dir):
+                ref_dataset = data_loader.syn_dataset
+            else:
+                ref_dataset = data_loader.dataset
+
+            if config['data_loader']['args']['FPS']:
+                ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['data_loader']['args']['reference_N'])
+            else:
+                ref_idx = random.sample(ref_dataset.dataset, config['data_loader']['args']['reference_N'])
+
+            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
+        
+
+
+
+
+
         use_mesh = config['mesh_loader']['args']['use_mesh']
 
     test_metrics = MetricTracker(error_ftns=error_ftns, metric_ftns=metric_ftns)
@@ -93,8 +108,9 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
     model.iteration = config["arch"]["args"]["iteration"]
 
     with torch.no_grad():
-        for batch_idx, (images, masks, depths, obj_ids, bboxes, RTs, Ks, K_origins) in enumerate(tqdm(data_loader, disable=config['gpu_scheduler'])):
-            images, masks, bboxes, RTs, Ks = images.to(device), masks.to(device), bboxes.to(device), RTs.to(device), Ks.to(device)
+        for batch_idx, batch in enumerate(tqdm(data_loader, disable=config['gpu_scheduler'])):
+            images, masks, bboxes, RTs, Ks = batch['images'].to(device), batch['masks'].to(device), batch['bboxes'].to(device), batch['RTs'].to(device), batch['Ks'].to(device)
+            obj_ids, depths, K_origins = batch['obj_ids'], batch['depths'], batch['K_origins']
             if use_mesh:
                 meshes = mesh_loader.batch_meshes(obj_ids)
                 ftrs = None
