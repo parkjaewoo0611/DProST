@@ -18,7 +18,8 @@ from utils.util import visualize
 import matplotlib.pyplot as plt
 import csv
 import warnings
-from utils.util import hparams_key, build_ref, get_param, MetricTracker
+from utils.util import hparams_key, build_ref, get_param, MetricTracker, farthest_rotation_sampling
+import random
 
 warnings.filterwarnings("ignore") 
 
@@ -84,11 +85,6 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
                 ref_idx = random.sample(ref_dataset.dataset, config['data_loader']['args']['reference_N'])
 
             ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
-        
-
-
-
-
 
         use_mesh = config['mesh_loader']['args']['use_mesh']
 
@@ -102,7 +98,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
     model.eval()
     model.mode = 'test'
     
-    DATA_PARAM = get_param(data_loader.data_dir)
+    DATA_PARAM = get_param(data_loader.dataset.data_dir)
 
     # set iteration setting
     model.iteration = config["arch"]["args"]["iteration"]

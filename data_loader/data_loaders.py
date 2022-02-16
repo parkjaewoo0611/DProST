@@ -31,7 +31,8 @@ class PoseDataset(Dataset):
         self.name = name
         self.data_dir = data_dir
 
-        dataset = pickle.load(open(os.path.join(data_dir, f'{name}.pickle'), 'rb'))
+        with open(os.path.join(data_dir, f'{name}.pickle'), 'rb') as f:
+            dataset = pickle.load(f)
         dataset = [sample for sample in dataset if sample['obj_id'] in obj_list]
         dataset = [sample for sample in dataset if sample['visib_fract'] > 0.0]
         self.dataset = dataset
