@@ -17,18 +17,20 @@ from pytorch3d.ops import sample_points_from_meshes
 ### used to evaluate the ADD score and for ablation study (not in model)
 class MeshesLoader():
     def __init__(self, data_dir, obj_list, N_pts=100, use_mesh=False, **kwargs):
+        self.use_mesh = use_mesh
+        self.N_pts = N_pts
         self.idx2radius = get_param(data_dir, 'idx2radius')
         self.device = torch.device("cuda:0")
         self.MESH_DIR = f'{data_dir}/models'
         self.obj_list = obj_list
-        self.MESH_DICT = self.load_meshes()
         self.MESH_INFO = self.load_mesh_info()
-        self.PTS_DICT = self.sample_pts(N_pts)
-        self.FULL_PTS_DICT = self.full_pts()
+        self.MESH_DICT, self.PTS_DICT, self.FULL_PTS_DICT = self.load_meshes()
 
     def load_meshes(self):
         mesh_adrs = sorted(glob.glob('%s/*.ply'%self.MESH_DIR))
         mesh_dict = {}
+        pts_dict = {}
+        full_pts_dict = {}
         for mesh in mesh_adrs:
             mesh_index = int(mesh.split('/')[-1].split('.')[0].split('_')[1])
             if mesh_index in self.obj_list:
@@ -53,8 +55,11 @@ class MeshesLoader():
                 mesh = Meshes(verts=[vertex],
                               faces=[faces],
                               textures=textures)
-                mesh_dict[mesh_index] = mesh
-        return mesh_dict
+                if self.use_mesh:
+                    mesh_dict[mesh_index] = mesh
+                pts_dict[mesh_index] = sample_points_from_meshes(mesh, self.N_pts)[0].to(self.device)
+                full_pts_dict[mesh_index] = mesh.verts_list()[0].to(self.device)
+        return mesh_dict, pts_dict, full_pts_dict
 
 
     def load_mesh_info(self):
@@ -66,18 +71,6 @@ class MeshesLoader():
             if mesh_index in self.obj_list:
                 mesh_info_dict[mesh_index] = mesh_info[key]
         return mesh_info_dict
-
-    def sample_pts(self, N_pts):
-        points_dict = {}
-        for obj_id in self.MESH_DICT.keys():
-            points_dict[obj_id] = sample_points_from_meshes(self.MESH_DICT[obj_id], N_pts)[0].to(self.device)
-        return points_dict
-    
-    def full_pts(self):
-        points_dict = {}
-        for obj_id in self.MESH_DICT.keys():
-            points_dict[obj_id] = self.MESH_DICT[obj_id].verts_list()[0].to(self.device)
-        return points_dict
 
     def batch_meshes(self, id_batch):
         mesh_list = [self.MESH_DICT[id] for id in id_batch.cpu().numpy()]

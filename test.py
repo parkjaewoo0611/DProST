@@ -142,7 +142,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
                 plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
 
-    for obj_test in config['data_loader']['args']['obj_list']:
+    for obj_test in config['data_loader']['obj_list']:
         log = {}
         log.update({
             k : v for k, v in test_metrics.result(obj_test).items()
