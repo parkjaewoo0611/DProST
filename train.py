@@ -39,24 +39,28 @@ def main(config):
     logger = config.get_logger('train')
 
     # set repeated args required
-    config['data_loader']['args']['img_ratio'] = config['arch']['args']['img_ratio']
-    config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
-    config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list']
+    config['data_loader']['img_ratio'] = config['arch']['args']['img_ratio']
+    config['data_loader']['batch_size'] = len(device_ids) * config['data_loader']['batch_size']
+    config['mesh_loader']['args']['data_dir'] = config['data_loader']['data_dir']
+    config['mesh_loader']['args']['obj_list'] = config['data_loader']['obj_list']
     config['arch']['args']['device'] = device
-    config['data_loader']['args']['batch_size'] = len(device_ids) * config['data_loader']['args']['batch_size']
+
 
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
 
     # setup data_loader instances
     print('Data Loader setting...')
-    data_loader = config.init_obj('data_loader', module_data)
-    if config['data_loader']['args']['test_as_valid']:
-        test_args = config['data_loader']['args'].copy()
-        test_args['shuffle'], test_args['training'], test_args['validation_split'], test_args['num_workers'] = False, False, 0.0, 0
-        valid_data_loader = getattr(module_data, config['data_loader']['type'])(**test_args)
-    else:
-        valid_data_loader = data_loader.split_validation()
+    train_loader_args = config['data_loader'].copy()
+    synth_loader_args = config['data_loader'].copy()
+    valid_loader_args = config['data_loader'].copy()    
+
+    train_loader_args['mode'] = 'train'
+    valid_loader_args['shuffle'], valid_loader_args['mode'] = False, 'test'
+    train_data_loader = getattr(module_data, 'DataLoader')(**train_loader_args)
+    synth_data_loader = getattr(module_data, 'DataLoader')(**synth_loader_args)    
+    valid_data_loader = getattr(module_data, 'DataLoader')(**valid_loader_args)
+
 
     # mesh loader
     print('Mesh Loader setting...')
@@ -66,17 +70,17 @@ def main(config):
     ftr_mask = {}
     for obj_id in config['mesh_loader']['args']['obj_list']:
         print(f'Generating Reference Feature of obj {obj_id}')
-        if data_loader.is_pbr and ('YCBV' in data_loader.dataset.data_dir):
-            ref_dataset = data_loader.syn_dataset
+        if synth_data_loader.dataset.mode == 'train_pbr' and ('YCBV' in synth_data_loader.dataset.data_dir):
+            ref_dataset = synth_data_loader.dataset
         else:
-            ref_dataset = data_loader.dataset
+            ref_dataset = train_data_loader.dataset
 
-        if config['data_loader']['args']['FPS']:
-            ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['data_loader']['args']['reference_N'])
+        if config['reference']['FPS']:
+            ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['reference']['reference_N'])
         else:
-            ref_idx = random.sample(ref_dataset.dataset, config['data_loader']['args']['reference_N'])
+            ref_idx = random.sample(ref_dataset.dataset, config['reference']['reference_N'])
 
-        ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
+        ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.steps, model.ftr_size, model.H, model.W)
     
     if len(device_ids) > 1:
         model = torch.nn.DataParallel(model, device_ids=device_ids)
@@ -103,9 +107,10 @@ def main(config):
         "ftr" : ftr,
         "ftr_mask" : ftr_mask,
         "device" : device,
-        "data_loader" : data_loader,
-        "mesh_loader" : mesh_loader,
+        "train_data_loader" : train_data_loader,
+        "synth_data_loader" : synth_data_loader,
         "valid_data_loader" : valid_data_loader,
+        "mesh_loader" : mesh_loader,
         "lr_scheduler" : lr_scheduler,
         "use_mesh" : config['mesh_loader']['args']['use_mesh'],
         "save_period": config['trainer']['save_period'],
@@ -144,21 +149,20 @@ if __name__ == '__main__':
         CustomArgs(['--model_name'], type=str, target='arch;args;model_name'),
         CustomArgs(['--N_z'], type=int, target='arch;args;N_z'),
 
-        CustomArgs(['--data_dir'], type=str, target='data_loader;args;data_dir'),
-        CustomArgs(['--batch_size'], type=int, target='data_loader;args;batch_size'),
-        CustomArgs(['--obj_list'], type=list, target='data_loader;args;obj_list'),
-        CustomArgs(['--reference_N'], type=int, target='data_loader;args;reference_N'),
-        CustomArgs(['--is_pbr'], type=bool, target='data_loader;args;is_pbr'),
-        CustomArgs(['--is_syn'], type=bool, target='data_loader;args;is_syn'),
-        CustomArgs(['--FPS'], type=bool, target='data_loader;args;FPS'),
+        CustomArgs(['--data_dir'], type=str, target='data_loader;data_dir'),
+        CustomArgs(['--batch_size'], type=int, target='data_loader;batch_size'),
+        CustomArgs(['--obj_list'], type=list, target='data_loader;obj_list'),
+        CustomArgs(['--reference_N'], type=int, target='data_loader;reference_N'),
+        CustomArgs(['--mode'], type=bool, target='data_loader;mode'),
+        CustomArgs(['--FPS'], type=bool, target='data_loader;FPS'),
 
         CustomArgs(['--lr'], type=float, target='optimizer;args;lr'),
         CustomArgs(['--loss'], type=str, target='loss'),
         CustomArgs(['--lr_step_size'], type=int, target='lr_scheduler;args;step_size'),
         CustomArgs(['--epochs'], type=int, target='trainer;epochs'),
         CustomArgs(['--save_period'], type=int, target='trainer;save_period'),
-        CustomArgs(['--use_mesh'], type=bool, target='mesh_loader;args;use_mesh'),
         CustomArgs(['--is_toy'], type=bool, target='trainer;is_toy'),
+        CustomArgs(['--use_mesh'], type=bool, target='mesh_loader;args;use_mesh'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

@@ -9,7 +9,8 @@ class Trainer(BaseTrainer):
     Trainer class
     """
     def __init__(self, config, device, model, criterion, test_metric_ftns, valid_error_ftns, valid_metric_ftns, optimizer, ftr, ftr_mask, 
-                 data_loader, mesh_loader, valid_data_loader=None, lr_scheduler=None, len_epoch=None, use_mesh=False, save_period=100, 
+                 mesh_loader, train_data_loader, synth_data_loader, valid_data_loader=None, use_mesh=False, 
+                 lr_scheduler=None, len_epoch=None, save_period=100, 
                  gpu_scheduler=False, is_toy=False, **kwargs):
         super().__init__(model, test_metric_ftns, optimizer, config)
         self.device = device
@@ -20,24 +21,26 @@ class Trainer(BaseTrainer):
         self.ftr = ftr
         self.ftr_mask = ftr_mask
 
-        self.data_loader = data_loader
-        self.mesh_loader = mesh_loader
+        self.train_data_loader = train_data_loader
+        if len_epoch is None:
+            # epoch-based training
+            self.len_epoch = len(self.train_data_loader)
+        else:
+            # iteration-based training
+            self.train_data_loader = inf_loop(self.train_data_loader)
+            self.len_epoch = len_epoch
+        self.synth_data_loader = inf_loop(synth_data_loader)
         self.valid_data_loader = valid_data_loader
+        self.mesh_loader = mesh_loader
+
         self.do_validation = self.valid_data_loader is not None
         
         self.save_period = save_period
         self.lr_scheduler = lr_scheduler
-        self.log_step = int(np.sqrt(data_loader.batch_size))
-        if len_epoch is None:
-            # epoch-based training
-            self.len_epoch = len(self.data_loader)
-        else:
-            # iteration-based training
-            self.data_loader = inf_loop(data_loader)
-            self.len_epoch = len_epoch
+        self.log_step = int(np.sqrt(train_data_loader.batch_size))
 
         self.gpu_scheduler = gpu_scheduler
-        self.DATA_PARAM = get_param(self.data_loader.dataset.data_dir)
+        self.DATA_PARAM = get_param(self.train_data_loader.dataset.data_dir)
         self.use_mesh = use_mesh
         self.is_toy = is_toy
 
@@ -52,7 +55,8 @@ class Trainer(BaseTrainer):
         self.model.mode = 'train'
         self.train_metrics.reset()
         
-        for batch_idx, batch in enumerate(self.data_loader):
+        for batch_idx, (train_batch, synth_batch) in enumerate(zip(self.train_data_loader, self.synth_data_loader)):
+            batch = {key : torch.cat([train_batch[key], synth_batch[key]], 0) for key in list(train_batch.keys())}
             images, bboxes, RTs, Ks = batch['images'].to(self.device), batch['bboxes'].to(self.device), batch['RTs'].to(self.device), batch['Ks'].to(self.device)
             obj_ids = batch['obj_ids']
             if self.use_mesh:
@@ -169,9 +173,9 @@ class Trainer(BaseTrainer):
 
     def _progress(self, batch_idx):
         base = '[{}/{} ({:.0f}%)]'
-        if hasattr(self.data_loader, 'n_samples'):
-            current = batch_idx * self.data_loader.batch_size
-            total = self.data_loader.n_samples
+        if hasattr(self.train_data_loader, 'n_samples'):
+            current = batch_idx * self.train_data_loader.batch_size
+            total = self.train_data_loader.n_samples
         else:
             current = batch_idx
             total = self.len_epoch

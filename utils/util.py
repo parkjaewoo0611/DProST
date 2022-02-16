@@ -385,7 +385,7 @@ def ProST_grid(H, W, f, cx, cy):
     XYZ = torch.cat((X.unsqueeze(2), Y.unsqueeze(2), Z.unsqueeze(2)), -1)
     return XYZ
 
-def reshape_grid(K_batch, K_d, XYZ, N_z):
+def reshape_grid(K_batch, K_d, XYZ, steps):
     bsz = K_batch.shape[0]
     f, px, py = (K_batch[..., 0, 0] + K_batch[..., 1, 1])/2, K_batch[..., 0, 2], K_batch[..., 1, 2]
     f_d, px_d, py_d = (K_d[..., 0, 0] + K_d[..., 1, 1])/2,  K_d[..., 0, 2],  K_d[..., 1, 2]
@@ -397,11 +397,7 @@ def reshape_grid(K_batch, K_d, XYZ, N_z):
     XYZ[..., 1] = XYZ[...,1] + delta_py.unsqueeze(1).unsqueeze(2) * sim_ratio
     L = torch.norm(XYZ, dim=-1)
     normalized_XYZ = XYZ / L.unsqueeze(-1)
-    dist_min = -1
-    dist_max = 1
-    step_size = (dist_max - dist_min) / N_z
-    steps = torch.arange(dist_min, dist_max - step_size/2, step_size)
-    projstn_grid = steps.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4).repeat(bsz, 1, 1, 1, 1).to(normalized_XYZ.device) * normalized_XYZ.unsqueeze(1)
+    projstn_grid = steps.repeat(bsz, 1, 1, 1, 1).to(normalized_XYZ.device) * normalized_XYZ.unsqueeze(1)
     return projstn_grid, normalized_XYZ
 
 def grid_transformer(grid, RT):
@@ -557,10 +553,10 @@ def carving_feature(masks, features, RT, K_crop, ftr_size):
     ftr_3d = ftr_3d.transpose(2, 4)                    # XYZ to ZYX (DHW)
     return ftr_3d, ftr_mask_3d
 
-def build_ref(ref_dataset, ref_idx, K_d, XYZ, N_z, ftr_size, H, W):
+def build_ref(ref_dataset, ref_idx, K_d, XYZ, steps, ftr_size, H, W):
     keys = ['Ks', 'bboxes', 'images', 'masks', 'RTs']
     ref = {k : torch.stack([ref_dataset[idx][k].to(XYZ.device) for idx in ref_idx]) for k in keys}
-    projstn_grid, coefficient = reshape_grid(ref['Ks'], K_d, XYZ, N_z)
+    projstn_grid, coefficient = reshape_grid(ref['Ks'], K_d, XYZ, steps)
     _, _, K_crop, bboxes_crop = crop_inputs(projstn_grid, coefficient, ref['Ks'], ref['bboxes'], (ftr_size, ftr_size))
     roi_feature = get_roi_feature(bboxes_crop, ref['images'], (H, W), (ftr_size, ftr_size))
     roi_mask = get_roi_feature(bboxes_crop, ref['masks'], (H, W), (ftr_size, ftr_size))

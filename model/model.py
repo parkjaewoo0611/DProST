@@ -71,6 +71,11 @@ class DProST(BaseModel):
                                  [ 0,  0,  1]]).unsqueeze(0).to(self.device)
         XYZ = ProST_grid(self.H, self.W, f_d, self.W//2, self.H//2)
         self.XYZ = XYZ.to(self.device)
+        dist_min = -1
+        dist_max = 1
+        step_size = (dist_max - dist_min) / N_z
+        self.steps = torch.arange(dist_min, dist_max - step_size/2, step_size).unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        self.L = torch.norm(self.XYZ, dim=-1)
 
         self.local_network = nn.ModuleDict()
         for i in range(1, self.iteration+1):
@@ -81,7 +86,7 @@ class DProST(BaseModel):
         
 
     def forward(self, images, ftr, ftr_mask, bboxes, K_batch, gt_RT=None, mesh=None):
-        projstn_grid, coefficient = reshape_grid(K_batch, self.K_d.to(K_batch.device), self.XYZ.to(K_batch.device), self.N_z)
+        projstn_grid, coefficient = reshape_grid(K_batch, self.K_d, self.XYZ, self.steps)
         ####################### 3D feature module ###################################
         P = {
             'ftr': ftr, 

@@ -11,7 +11,7 @@ import glob
 
 class PoseDataset(Dataset):
     """ load data instance of 6D pose"""
-    def __init__(self, data_dir, obj_list, name, img_ratio):
+    def __init__(self, data_dir, obj_list, mode, img_ratio):
         """
             data_dir : path to root dataset dir
             obj_list : list of obj id
@@ -28,10 +28,10 @@ class PoseDataset(Dataset):
         self._bg_img_paths = glob.glob(f'{data_dir}/background/*')
         self.K_scaler = torch.tensor(np.diag([self.img_ratio, self.img_ratio, 1])).to(torch.float)
         self.default = Image.fromarray(np.zeros([H, W]))
-        self.name = name
+        self.mode = mode
         self.data_dir = data_dir
 
-        with open(os.path.join(data_dir, f'{name}.pickle'), 'rb') as f:
+        with open(os.path.join(data_dir, f'{mode}.pickle'), 'rb') as f:
             dataset = pickle.load(f)
         dataset = [sample for sample in dataset if sample['obj_id'] in obj_list]
         dataset = [sample for sample in dataset if sample['visib_fract'] > 0.0]
@@ -44,8 +44,8 @@ class PoseDataset(Dataset):
         image = Image.open(self.dataset[idx]['image'])
         depth = Image.open(self.dataset[idx]['depth']) * self.dataset[idx]['depth_scale'] if self.dataset[idx]['depth'] is not None else self.default.copy()
         mask = Image.open(self.dataset[idx]['mask']) if self.dataset[idx]['mask'] is not None else self.default.copy().astype(bool)
-        image = replace_bg(image, mask, self._bg_img_paths) if self.name == 'train_syn' else image
-        bbox = np.array(self.dataset[idx]['bbox_obj'].copy()) if 'train' in self.name else np.array(self.dataset[idx]['bbox_test'].copy())
+        image = replace_bg(image, mask, self._bg_img_paths) if self.mode == 'train_syn' else image
+        bbox = np.array(self.dataset[idx]['bbox_obj'].copy()) if 'train' in self.mode else np.array(self.dataset[idx]['bbox_test'].copy())
         obj_id = self.dataset[idx]['obj_id']
         RT = self.dataset[idx]['RT'].copy()
         RT[:3, 3] = RT[:3, 3] / self.idx2radius[obj_id]
@@ -68,34 +68,10 @@ class DataLoader(BaseDataLoader):
     """
     DataLoader to construct batch from multiple Dataset class
     """
-    def __init__(self, data_dir, batch_size, obj_list, reference_N=8, is_pbr=True, is_syn=False, img_ratio=1.0, 
-                 shuffle=True, validation_split=0.0, num_workers=4, training=True, FPS=True, **kwargs):
-        self.reference_N = reference_N
-        self.FPS = FPS
-        self.is_pbr = is_pbr
-        self.is_syn = is_syn
-        self.training = training
-        if self.training:
-            self.dataset = PoseDataset(data_dir, obj_list, 'train', img_ratio)
-        else:
-            self.dataset = PoseDataset(data_dir, obj_list, 'test', img_ratio)
-
-        if self.is_pbr:
-            self.syn_dataset = PoseDataset(data_dir, obj_list, 'train_pbr', img_ratio)
-        elif self.is_syn:
-            self.syn_dataset = PoseDataset(data_dir, obj_list, 'train_syn', img_ratio)
-        else:
-            self.syn_dataset = PoseDataset(data_dir, obj_list, 'train', img_ratio)
+    def __init__(self, data_dir, batch_size, obj_list, mode='train', img_ratio=1.0, 
+                 shuffle=True, num_workers=4, **kwargs):
+        self.dataset = PoseDataset(data_dir, obj_list, mode, img_ratio)
 
         #### self.dataset --> batch
-        super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=self.collate_fn)
-
-    def collate_fn(self, data):
-        batch_N = len(data)
-        if self.training:
-            data = data + [self.syn_dataset[int(np.random.random()*len(self.syn_dataset))] for _ in range(batch_N)]
-        batch = {key : torch.stack([d[key] for d in data]) for key in list(data[0].keys())}
-        return batch
-
-
+        super().__init__(self.dataset, batch_size, shuffle, num_workers)
 

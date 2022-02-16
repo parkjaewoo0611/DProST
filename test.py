@@ -84,7 +84,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             else:
                 ref_idx = random.sample(ref_dataset.dataset, config['data_loader']['args']['reference_N'])
 
-            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.N_z, model.ftr_size, model.H, model.W)
+            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.steps, model.ftr_size, model.H, model.W)
 
         use_mesh = config['mesh_loader']['args']['use_mesh']
 

@@ -14,20 +14,17 @@
         }
     },
     "data_loader": {
-        "type": "DataLoader",
-        "args":{
-            "data_dir": "../Dataset/LINEMOD",
-            "batch_size": 6,
-            "obj_list" : [1],
-            "reference_N": 8,
-            "is_pbr": true,
-            "is_syn": false,
-            "shuffle": true,
-            "validation_split": 0.0,
-            "test_as_valid": true,
-            "num_workers": 8,
-            "FPS": true
-        }
+        "data_dir": "../Dataset/OCCLUSION",
+        "batch_size": 6,
+        "obj_list" : [1],
+        "mode" : "train_pbr",
+        "shuffle": true,
+        "num_workers": 4
+
+    },
+    "reference": {
+        "FPS": true,
+        "reference_N": 8
     },
     "mesh_loader": {
         "type": "MeshesLoader",
