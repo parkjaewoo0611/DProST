@@ -46,7 +46,7 @@ def prepare_device(gpu_id):
 
     device = torch.device(f'cuda:0' if n_gpu_use > 0 else 'cpu')
     
-    return device, gpu_list
+    return device, gpu_list, n_gpu
 
 class MetricTracker:
     def __init__(self, error_ftns=[], metric_ftns=[], writer=None):

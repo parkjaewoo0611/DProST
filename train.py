@@ -5,6 +5,8 @@ import argparse
 from parse_config import str2bool
 import collections
 import torch
+from torch.multiprocessing import spawn
+from torch.distributed import init_process_group
 import numpy as np
 import data_loader.mesh_loader as module_mesh
 import data_loader.data_loaders as module_data
@@ -35,20 +37,39 @@ def main(config):
         config['trainer']['verbosity'] = 0
 
     # prepare for (multi-device) GPU training
-    device, device_ids = prepare_device(config['gpu_id'])
-    logger = config.get_logger('train')
+    device, device_ids, n_gpu = prepare_device(config['gpu_id'])
 
     # set repeated args required
     config['data_loader']['img_ratio'] = config['arch']['args']['img_ratio']
-    config['data_loader']['batch_size'] = len(device_ids) * config['data_loader']['batch_size']
     config['mesh_loader']['args']['data_dir'] = config['data_loader']['data_dir']
     config['mesh_loader']['args']['obj_list'] = config['data_loader']['obj_list']
     config['arch']['args']['device'] = device
+    spawn(main_worker, nprocs=n_gpu, args=(config, n_gpu, ))
 
+
+def main_worker(gpu, config, n_gpu):
+    logger = config.get_logger('train')
+
+    init_process_group(
+            backend='nccl',
+            init_method='tcp://127.0.0.1:3456',
+            world_size=n_gpu,
+            rank=gpu)
 
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
-
+    torch.cuda.set_device(gpu)
+    model = model.to(gpu)
+    ref_param = {
+        'K_d': model.K_d,
+        'XYZ' : model.XYZ, 
+        'steps' : model.steps, 
+        'ftr_size' : model.ftr_size, 
+        'H' : model.H, 
+        'W' : model.W
+    }
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
+    
     # setup data_loader instances
     print('Data Loader setting...')
     train_loader_args = config['data_loader'].copy()
@@ -60,7 +81,6 @@ def main(config):
     train_data_loader = getattr(module_data, 'DataLoader')(**train_loader_args)
     synth_data_loader = getattr(module_data, 'DataLoader')(**synth_loader_args)    
     valid_data_loader = getattr(module_data, 'DataLoader')(**valid_loader_args)
-
 
     # mesh loader
     print('Mesh Loader setting...')
@@ -80,11 +100,7 @@ def main(config):
         else:
             ref_idx = random.sample(ref_dataset.dataset, config['reference']['reference_N'])
 
-        ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.steps, model.ftr_size, model.H, model.W)
-    
-    if len(device_ids) > 1:
-        model = torch.nn.DataParallel(model, device_ids=device_ids)
-    model = model.to(device)
+        ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, **ref_param)
     
     # get function handles of loss and metrics
     criterion = getattr(module_loss, config['loss'])
@@ -106,7 +122,7 @@ def main(config):
         "optimizer" : optimizer,
         "ftr" : ftr,
         "ftr_mask" : ftr_mask,
-        "device" : device,
+        "device" : gpu,
         "train_data_loader" : train_data_loader,
         "synth_data_loader" : synth_data_loader,
         "valid_data_loader" : valid_data_loader,
