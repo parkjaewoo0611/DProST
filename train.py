@@ -48,7 +48,8 @@ def main(gpu, config, n_gpu):
         'H' : model.H, 
         'W' : model.W
     }
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
+    if n_gpu > 1:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
     
     # setup data_loader instances
     print('Data Loader setting...')

@@ -1,6 +1,6 @@
 {
     "name": "DProST",
-    "gpu_id": "0,1,2",
+    "gpu_id": "1,2",
     "gpu_scheduler": false,
     "arch": {
         "type": "DProST",
