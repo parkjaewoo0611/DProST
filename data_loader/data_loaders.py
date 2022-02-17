@@ -69,9 +69,9 @@ class DataLoader(BaseDataLoader):
     DataLoader to construct batch from multiple Dataset class
     """
     def __init__(self, data_dir, batch_size, obj_list, mode='train', img_ratio=1.0, 
-                 shuffle=True, num_workers=4, **kwargs):
+                 shuffle=True, num_workers=4, rank=0, is_dist=False, **kwargs):
         self.dataset = PoseDataset(data_dir, obj_list, mode, img_ratio)
 
         #### self.dataset --> batch
-        super().__init__(self.dataset, batch_size, shuffle, num_workers)
+        super().__init__(self.dataset, batch_size, shuffle, num_workers, rank, is_dist)
 

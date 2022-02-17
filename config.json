@@ -1,6 +1,6 @@
 {
     "name": "DProST",
-    "gpu_id": "0",
+    "gpu_id": "1",
     "gpu_scheduler": false,
     "arch": {
         "type": "DProST",
@@ -15,11 +15,11 @@
     },
     "data_loader": {
         "data_dir": "../Dataset/YCBV",
-        "batch_size": 6,
+        "batch_size": 16,
         "obj_list" : [1],
         "mode" : "train_pbr",
-        "shuffle": false,
-        "num_workers": 4
+        "shuffle": true,
+        "num_workers": 8
 
     },
     "reference": {
@@ -64,9 +64,9 @@
         }
     },
     "trainer": {
-        "epochs": 3000,
+        "epochs": 3,
         "save_dir": "saved/",
-        "save_period": 100,
+        "save_period": 1,
         "verbosity": 2,
         "monitor": "max val_ADD_S_10",
         "early_stop": 1000,

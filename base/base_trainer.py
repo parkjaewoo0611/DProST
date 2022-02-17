@@ -8,7 +8,8 @@ class BaseTrainer:
     """
     Base class for all trainers
     """
-    def __init__(self, model, test_metric_ftns, optimizer, config):
+    def __init__(self, model, test_metric_ftns, optimizer, config, device):
+        self.device = device
         self.config = config
         self.logger = config.get_logger('trainer', config['trainer']['verbosity'])
 
@@ -23,12 +24,12 @@ class BaseTrainer:
         # configuration to monitor model performance and save best
         if self.monitor == 'off':
             self.mnt_mode = 'off'
-            self.mnt_best = 0
+            self.mnt_best = torch.tensor(0)
         else:
             self.mnt_mode, self.mnt_metric = self.monitor.split()
             assert self.mnt_mode in ['min', 'max']
 
-            self.mnt_best = inf if self.mnt_mode == 'min' else -inf
+            self.mnt_best = torch.tensor(inf) if self.mnt_mode == 'min' else torch.tensor(-inf)
             self.early_stop = cfg_trainer.get('early_stop', inf)
             if self.early_stop <= 0:
                 self.early_stop = inf
@@ -47,7 +48,7 @@ class BaseTrainer:
         self.hparams_result = {met.__name__: 0 for met in test_metric_ftns}
         self.hparams_result['current_epoch'] = self.start_epoch
         self.hparams_result['best_epoch'] = self.start_epoch
-        self.hparams_result[self.mnt_metric[4:]] = self.mnt_best
+        self.hparams_result[self.mnt_metric[4:]] = self.mnt_best.item()
         self.writer.add_hparams(self.hparams, self.hparams_result)
 
     @abstractmethod
@@ -66,47 +67,47 @@ class BaseTrainer:
         not_improved_count = 0
         for epoch in range(self.start_epoch, self.epochs + 1):
             result = self._train_epoch(epoch)
+            if self.device == 0 :
+                # save logged informations into log dict
+                log = {'epoch': epoch}
+                log.update(result)
 
-            # save logged informations into log dict
-            log = {'epoch': epoch}
-            log.update(result)
+                # print logged informations to the screen
+                for key, value in log.items():
+                    self.logger.info('    {:15s}: {}'.format(str(key), value))
 
-            # print logged informations to the screen
-            for key, value in log.items():
-                self.logger.info('    {:15s}: {}'.format(str(key), value))
+                # evaluate model performance according to configured metric, save best checkpoint as model_best
+                best = False
+                if epoch % self.save_period == 0 and self.mnt_mode != 'off':
+                    self.hparams_result['current_epoch'] = epoch
+                    try:
+                        # check whether model performance improved or not, according to specified metric(mnt_metric)
+                        improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.mnt_best.item()) or \
+                                (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.mnt_best.item())
+                    except KeyError:
+                        self.logger.warning("Warning: Metric '{}' is not found. "
+                                            "Model performance monitoring is disabled.".format(self.mnt_metric))
+                        self.mnt_mode = 'off'
+                        improved = False
 
-            # evaluate model performance according to configured metric, save best checkpoint as model_best
-            best = False
-            if epoch % self.save_period == 0 and self.mnt_mode != 'off':
-                self.hparams_result['current_epoch'] = epoch
-                try:
-                    # check whether model performance improved or not, according to specified metric(mnt_metric)
-                    improved = (self.mnt_mode == 'min' and log[self.mnt_metric] <= self.mnt_best) or \
-                               (self.mnt_mode == 'max' and log[self.mnt_metric] >= self.mnt_best)
-                except KeyError:
-                    self.logger.warning("Warning: Metric '{}' is not found. "
-                                        "Model performance monitoring is disabled.".format(self.mnt_metric))
-                    self.mnt_mode = 'off'
-                    improved = False
+                    if improved:
+                        for k, v in log.items():
+                            if 'val' in k:
+                                self.hparams_result[k[4:]] = v
+                        self.hparams_result['best_epoch'] = epoch
+                        self.mnt_best = torch.tensor(log[self.mnt_metric])
+                        not_improved_count = 0
+                        best = True
+                    else:
+                        not_improved_count += 1
 
-                if improved:
-                    for k, v in log.items():
-                        if 'val' in k:
-                            self.hparams_result[k[4:]] = v
-                    self.hparams_result['best_epoch'] = epoch
-                    self.mnt_best = log[self.mnt_metric]
-                    not_improved_count = 0
-                    best = True
-                else:
-                    not_improved_count += 1
+                    if not_improved_count > self.early_stop:
+                        self.logger.info("Validation performance didn\'t improve for {} epochs. "
+                                        "Training stops.".format(self.early_stop))
+                        break
 
-                if not_improved_count > self.early_stop:
-                    self.logger.info("Validation performance didn\'t improve for {} epochs. "
-                                     "Training stops.".format(self.early_stop))
-                    break
-
-                self.writer.add_hparams(self.hparams, self.hparams_result)
-                self._save_checkpoint(epoch, save_best=best)
+                    self.writer.add_hparams(self.hparams, self.hparams_result)
+                    self._save_checkpoint(epoch, save_best=best)
 
     def _save_checkpoint(self, epoch, save_best=False):
         """
@@ -122,7 +123,7 @@ class BaseTrainer:
             'epoch': epoch,
             'state_dict': self.model.state_dict(),
             'optimizer': self.optimizer.state_dict(),
-            'monitor_best': self.mnt_best,
+            'monitor_best': self.mnt_best.item(),
             'config': self.config
         }
         filename = str(self.checkpoint_dir / 'checkpoint-epoch{}.pth'.format(epoch))
@@ -145,7 +146,7 @@ class BaseTrainer:
         self.logger.info("Loading checkpoint: {} ...".format(resume_path))
         checkpoint = torch.load(resume_path)
         self.start_epoch = checkpoint['epoch'] + 1
-        self.mnt_best = checkpoint['monitor_best']
+        self.mnt_best = torch.tensor(checkpoint['monitor_best'])
 
         # load architecture params from checkpoint.
         if checkpoint['config']['arch'] != self.config['arch']:

@@ -12,8 +12,7 @@ class Trainer(BaseTrainer):
                  mesh_loader, train_data_loader, synth_data_loader, valid_data_loader=None, use_mesh=False, 
                  lr_scheduler=None, len_epoch=None, save_period=100, 
                  gpu_scheduler=False, is_toy=False, **kwargs):
-        super().__init__(model, test_metric_ftns, optimizer, config)
-        self.device = device
+        super().__init__(model, test_metric_ftns, optimizer, config, device)
         self.criterion = criterion
         self.train_metrics = MetricTracker(writer=self.writer)
         self.valid_metrics = MetricTracker(error_ftns=valid_error_ftns, metric_ftns=valid_metric_ftns, writer=self.writer)
@@ -54,7 +53,7 @@ class Trainer(BaseTrainer):
         self.model.train()
         self.model.mode = 'train'
         self.train_metrics.reset()
-        
+
         for batch_idx, (train_batch, synth_batch) in enumerate(zip(self.train_data_loader, self.synth_data_loader)):
             batch = {key : torch.cat([train_batch[key], synth_batch[key]], 0) for key in list(train_batch.keys())}
             images, bboxes, RTs, Ks = batch['images'].to(self.device), batch['bboxes'].to(self.device), batch['RTs'].to(self.device), batch['Ks'].to(self.device)
@@ -97,13 +96,14 @@ class Trainer(BaseTrainer):
                 break
         log = self.train_metrics.result()
 
-        if self.do_validation and epoch % self.save_period == 0 :
-            c, g = visualize(RTs, output, P)
-            self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
-            self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
-            
-            val_log = self._valid_epoch(epoch)
-            log.update(**{'val_'+k : v for k, v in val_log.items()})
+        if self.device == 0:
+            if self.do_validation and epoch % self.save_period == 0 :
+                c, g = visualize(RTs, output, P)
+                self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
+                self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
+                
+                val_log = self._valid_epoch(epoch)
+                log.update(**{'val_'+k : v for k, v in val_log.items()})
 
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()

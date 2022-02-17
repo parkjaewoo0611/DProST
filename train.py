@@ -6,7 +6,7 @@ from parse_config import str2bool
 import collections
 import torch
 from torch.multiprocessing import spawn
-from torch.distributed import init_process_group
+import torch.distributed as dist
 import numpy as np
 import data_loader.mesh_loader as module_mesh
 import data_loader.data_loaders as module_data
@@ -29,33 +29,13 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
-def main(config):
-    if not config['gpu_scheduler']:
-        os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-        os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
-    if config['gpu_scheduler']:
-        config['trainer']['verbosity'] = 0
-
-    # prepare for (multi-device) GPU training
-    device, device_ids, n_gpu = prepare_device(config['gpu_id'])
-
-    # set repeated args required
-    config['data_loader']['img_ratio'] = config['arch']['args']['img_ratio']
-    config['mesh_loader']['args']['data_dir'] = config['data_loader']['data_dir']
-    config['mesh_loader']['args']['obj_list'] = config['data_loader']['obj_list']
-    config['arch']['args']['device'] = device
-    spawn(main_worker, nprocs=n_gpu, args=(config, n_gpu, ))
-
-
-def main_worker(gpu, config, n_gpu):
-    logger = config.get_logger('train')
-
-    init_process_group(
+def main(gpu, config, n_gpu):
+    config['arch']['args']['device'] = gpu    
+    dist.init_process_group(
             backend='nccl',
             init_method='tcp://127.0.0.1:3456',
             world_size=n_gpu,
             rank=gpu)
-
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
     torch.cuda.set_device(gpu)
@@ -77,10 +57,14 @@ def main_worker(gpu, config, n_gpu):
     valid_loader_args = config['data_loader'].copy()    
 
     train_loader_args['mode'] = 'train'
-    valid_loader_args['shuffle'], valid_loader_args['mode'] = False, 'test'
-    train_data_loader = getattr(module_data, 'DataLoader')(**train_loader_args)
-    synth_data_loader = getattr(module_data, 'DataLoader')(**synth_loader_args)    
-    valid_data_loader = getattr(module_data, 'DataLoader')(**valid_loader_args)
+    valid_loader_args['mode'] = 'test'
+    train_loader_args['is_dist'] = True
+    synth_loader_args['is_dist'] = True
+    valid_loader_args['is_dist'] = False
+    valid_loader_args['shuffle'] = False
+    train_data_loader = getattr(module_data, 'DataLoader')(rank=gpu, **train_loader_args)
+    synth_data_loader = getattr(module_data, 'DataLoader')(rank=gpu, **synth_loader_args)    
+    valid_data_loader = getattr(module_data, 'DataLoader')(rank=gpu, **valid_loader_args)
 
     # mesh loader
     print('Mesh Loader setting...')
@@ -136,13 +120,14 @@ def main_worker(gpu, config, n_gpu):
     trainer = Trainer(config, **material)
     trainer.train()
 
-    material['data_loader'] = valid_data_loader
-    material["best_path"] = Path(f"{trainer.best_dir}/model_best.pth")
-    material['writer'] = trainer.writer.set_mode('test')
-    material['error_ftns'] = test_errors
-    material['metric_ftns'] = test_metrics
-
-    test.main(config, is_test=False, **material)
+    dist.barrier()
+    if gpu == 0 :
+        material['data_loader'] = valid_data_loader
+        material["best_path"] = Path(f"{trainer.best_dir}/model_best.pth")
+        material['writer'] = trainer.writer.set_mode('test')
+        material['error_ftns'] = test_errors
+        material['metric_ftns'] = test_metrics
+        test.main(config, is_test=False, **material)
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
@@ -181,4 +166,24 @@ if __name__ == '__main__':
         CustomArgs(['--use_mesh'], type=bool, target='mesh_loader;args;use_mesh'),
     ]
     config = ConfigParser.from_args(args, options)
-    main(config)
+
+    if not config['gpu_scheduler']:
+        os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
+    if config['gpu_scheduler']:
+        config['trainer']['verbosity'] = 0
+
+
+    os.environ['MASTER_ADDR'] = '127.0.0.1'
+    os.environ['MASTER_PORT'] = '29500'
+    # prepare for (multi-device) GPU training
+    device, device_ids, n_gpu = prepare_device(config['gpu_id'])
+
+    # set repeated args required
+    config['data_loader']['img_ratio'] = config['arch']['args']['img_ratio']
+    config['mesh_loader']['args']['data_dir'] = config['data_loader']['data_dir']
+    config['mesh_loader']['args']['obj_list'] = config['data_loader']['obj_list']
+
+    logger = config.get_logger('train')
+
+    spawn(main, nprocs=n_gpu, args=(config, n_gpu, ))
