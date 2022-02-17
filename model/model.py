@@ -61,7 +61,7 @@ class DProST(BaseModel):
         self.W = int(640 * self.img_ratio)
         self.N_z = N_z
         self.ftr_size = ftr_size
-        self.img_size = [img_size, img_size]
+        self.img_size = torch.tensor([img_size, img_size])
         self.iteration = iteration
         self.mode = mode
 
@@ -86,13 +86,13 @@ class DProST(BaseModel):
         
 
     def forward(self, images, ftr, ftr_mask, bboxes, K_batch, gt_RT=None, mesh=None):
-        projstn_grid, coefficient = reshape_grid(K_batch, self.K_d, self.XYZ, self.steps)
+        projstn_grid, coefficient = reshape_grid(K_batch, self.K_d.to(K_batch.device), self.XYZ.to(K_batch.device), self.steps.to(K_batch.device))
         ####################### 3D feature module ###################################
         P = {
             'ftr': ftr, 
             'ftr_mask': ftr_mask,
             'mesh': mesh,
-            'img_size': torch.tensor(self.img_size).to(K_batch.device),
+            'img_size': self.img_size.to(K_batch.device),
         }
         pred = {}
 
