@@ -30,10 +30,11 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 def main(gpu, config, n_gpu):
+    port = random.randint(1111, 9999)
     config['arch']['args']['device'] = gpu    
     dist.init_process_group(
             backend='nccl',
-            init_method='tcp://127.0.0.1:3456',
+            init_method=f'tcp://127.0.0.1:{port}',
             world_size=n_gpu,
             rank=gpu)
     # build model architecture, then print to console

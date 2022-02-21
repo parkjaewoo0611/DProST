@@ -1,6 +1,6 @@
 {
     "name": "DProST",
-    "gpu_id": "1,2",
+    "gpu_id": "0",
     "gpu_scheduler": false,
     "arch": {
         "type": "DProST",
@@ -19,7 +19,7 @@
         "obj_list" : [1],
         "mode" : "train_pbr",
         "shuffle": true,
-        "num_workers": 8
+        "num_workers": 4
 
     },
     "reference": {
