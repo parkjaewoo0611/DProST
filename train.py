@@ -194,5 +194,7 @@ if __name__ == '__main__':
     config['mesh_loader']['args']['obj_list'] = config['data_loader']['obj_list']
 
     logger = config.get_logger('train')
-
-    spawn(main, nprocs=n_gpu, args=(config, n_gpu, ))
+    if n_gpu > 1:
+        spawn(main, nprocs=n_gpu, args=(config, n_gpu, ))
+    else:
+        main(0, config, n_gpu)
