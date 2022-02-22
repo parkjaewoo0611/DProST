@@ -73,5 +73,5 @@ class DataLoader(BaseDataLoader):
         self.dataset = PoseDataset(data_dir, obj_list, mode, img_ratio)
 
         #### self.dataset --> batch
-        super().__init__(self.dataset, batch_size, shuffle, num_workers, rank, is_dist)
+        super().__init__(self.dataset, batch_size, shuffle, num_workers, rank, is_dist, mode)
 

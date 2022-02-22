@@ -30,25 +30,18 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 
 def main(gpu, config, n_gpu):
-    port = random.randint(1111, 9999)
-    config['arch']['args']['device'] = gpu    
-    dist.init_process_group(
-            backend='nccl',
-            init_method=f'tcp://127.0.0.1:{port}',
-            world_size=n_gpu,
-            rank=gpu)
+    config['arch']['args']['device'] = gpu
+    if n_gpu > 1:    
+        port = random.randint(1111, 9999)
+        dist.init_process_group(
+                backend='nccl',
+                init_method=f'tcp://127.0.0.1:{port}',
+                world_size=n_gpu,
+                rank=gpu)
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
     torch.cuda.set_device(gpu)
     model = model.to(gpu)
-    ref_param = {
-        'K_d': model.K_d,
-        'XYZ' : model.XYZ, 
-        'steps' : model.steps, 
-        'ftr_size' : model.ftr_size, 
-        'H' : model.H, 
-        'W' : model.W
-    }
     if n_gpu > 1:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
     
@@ -60,8 +53,12 @@ def main(gpu, config, n_gpu):
 
     train_loader_args['mode'] = 'train'
     valid_loader_args['mode'] = 'test'
-    train_loader_args['is_dist'] = True
-    synth_loader_args['is_dist'] = True
+    if n_gpu > 1:
+        train_loader_args['is_dist'] = True
+        synth_loader_args['is_dist'] = True
+    else:
+        train_loader_args['is_dist'] = False
+        synth_loader_args['is_dist'] = False
     valid_loader_args['is_dist'] = False
     valid_loader_args['shuffle'] = False
     train_data_loader = getattr(module_data, 'DataLoader')(rank=gpu, **train_loader_args)
@@ -72,6 +69,15 @@ def main(gpu, config, n_gpu):
     print('Mesh Loader setting...')
     mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
+    # reference build
+    ref_param = {
+        'K_d': model.K_d,
+        'XYZ' : model.XYZ, 
+        'steps' : model.steps, 
+        'ftr_size' : model.ftr_size, 
+        'H' : model.H, 
+        'W' : model.W
+    }
     ftr = {}
     ftr_mask = {}
     for obj_id in config['mesh_loader']['args']['obj_list']:
@@ -121,8 +127,9 @@ def main(gpu, config, n_gpu):
     }
     trainer = Trainer(config, **material)
     trainer.train()
-
-    dist.barrier()
+    
+    if n_gpu > 1:
+        dist.barrier()
     if gpu == 0 :
         material['data_loader'] = valid_data_loader
         material["best_path"] = Path(f"{trainer.best_dir}/model_best.pth")
@@ -175,9 +182,9 @@ if __name__ == '__main__':
     if config['gpu_scheduler']:
         config['trainer']['verbosity'] = 0
 
-
+    master_port = random.randint(1111, 9999)
     os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '29500'
+    os.environ['MASTER_PORT'] = f'{master_port}'
     # prepare for (multi-device) GPU training
     device, device_ids, n_gpu = prepare_device(config['gpu_id'])
 
