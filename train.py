@@ -162,9 +162,10 @@ if __name__ == '__main__':
         CustomArgs(['--data_dir'], type=str, target='data_loader;data_dir'),
         CustomArgs(['--batch_size'], type=int, target='data_loader;batch_size'),
         CustomArgs(['--obj_list'], type=list, target='data_loader;obj_list'),
-        CustomArgs(['--reference_N'], type=int, target='data_loader;reference_N'),
         CustomArgs(['--mode'], type=bool, target='data_loader;mode'),
-        CustomArgs(['--FPS'], type=bool, target='data_loader;FPS'),
+
+        CustomArgs(['--reference_N'], type=int, target='reference;reference_N'),
+        CustomArgs(['--FPS'], type=bool, target='reference;FPS'),
 
         CustomArgs(['--lr'], type=float, target='optimizer;args;lr'),
         CustomArgs(['--loss'], type=str, target='loss'),
