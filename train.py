@@ -176,7 +176,6 @@ if __name__ == '__main__':
         CustomArgs(['--use_mesh'], type=bool, target='mesh_loader;args;use_mesh'),
     ]
     config = ConfigParser.from_args(args, options)
-
     if not config['gpu_scheduler']:
         os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"]= config['gpu_id']
@@ -188,7 +187,7 @@ if __name__ == '__main__':
     os.environ['MASTER_PORT'] = f'{master_port}'
     # prepare for (multi-device) GPU training
     device, device_ids, n_gpu = prepare_device(config['gpu_id'])
-
+    print(device, device_ids, n_gpu)
     # set repeated args required
     config['data_loader']['img_ratio'] = config['arch']['args']['img_ratio']
     config['mesh_loader']['args']['data_dir'] = config['data_loader']['data_dir']
@@ -198,4 +197,4 @@ if __name__ == '__main__':
     if n_gpu > 1:
         spawn(main, nprocs=n_gpu, args=(config, n_gpu, ))
     else:
-        main(0, config, n_gpu)
+        main(int(config['gpu_id']), config, n_gpu)
