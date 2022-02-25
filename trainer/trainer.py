@@ -125,7 +125,7 @@ class Trainer(BaseTrainer):
                 obj_ids, depths, K_origins = batch['obj_ids'], batch['depths'], batch['K_origins']
                 
                 if self.use_mesh:
-                    meshes = self.mesh_loader.batch_meshes(obj_ids)
+                    meshes = self.mesh_loader.batch_meshes(obj_ids.tolist())
                     ftrs = None
                     ftr_masks = None
                 else:

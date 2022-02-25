@@ -73,7 +73,7 @@ class MeshesLoader():
         return mesh_info_dict
 
     def batch_meshes(self, id_batch):
-        mesh_list = [self.MESH_DICT[id] for id in id_batch.cpu().numpy()]
+        mesh_list = [self.MESH_DICT[id] for id in id_batch]
         mesh_batch = join_meshes_as_batch(mesh_list).to(self.device)
         return mesh_batch
 

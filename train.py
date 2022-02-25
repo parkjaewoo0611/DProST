@@ -82,10 +82,7 @@ def main(gpu, config, n_gpu):
     ftr_mask = {}
     for obj_id in config['mesh_loader']['args']['obj_list']:
         print(f'Generating Reference Feature of obj {obj_id}')
-        if synth_data_loader.dataset.mode == 'train_pbr' and ('YCBV' in synth_data_loader.dataset.data_dir):
-            ref_dataset = synth_data_loader.dataset
-        else:
-            ref_dataset = train_data_loader.dataset
+        ref_dataset = train_data_loader.dataset
 
         if config['reference']['FPS']:
             ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['reference']['reference_N'])
@@ -187,7 +184,6 @@ if __name__ == '__main__':
     os.environ['MASTER_PORT'] = f'{master_port}'
     # prepare for (multi-device) GPU training
     device, device_ids, n_gpu = prepare_device(config['gpu_id'])
-    print(device, device_ids, n_gpu)
     # set repeated args required
     config['data_loader']['img_ratio'] = config['arch']['args']['img_ratio']
     config['mesh_loader']['args']['data_dir'] = config['data_loader']['data_dir']

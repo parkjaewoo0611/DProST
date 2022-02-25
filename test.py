@@ -108,7 +108,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             images, masks, bboxes, RTs, Ks = batch['images'].to(device), batch['masks'].to(device), batch['bboxes'].to(device), batch['RTs'].to(device), batch['Ks'].to(device)
             obj_ids, depths, K_origins = batch['obj_ids'], batch['depths'], batch['K_origins']
             if use_mesh:
-                meshes = mesh_loader.batch_meshes(obj_ids)
+                meshes = mesh_loader.batch_meshes(obj_ids.tolist())
                 ftrs = None
                 ftr_masks = None
             else:
@@ -141,6 +141,9 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
                 c, g = visualize(RTs, output, P)
                 plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
                 plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
+            
+            if config['trainer']['is_toy'] and batch_idx==5:
+                break
 
     for obj_test in config['data_loader']['obj_list']:
         log = {}
