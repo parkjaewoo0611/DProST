@@ -53,11 +53,13 @@ class Trainer(BaseTrainer):
         self.model.train()
         self.model.mode = 'train'
         self.train_metrics.reset()
-
+        import time; start = time.time()
         for batch_idx, (train_batch, synth_batch) in enumerate(zip(self.train_data_loader, self.synth_data_loader)):
+            print(f'{time.time() - start} for loading'); start = time.time()
             batch = {key : torch.cat([train_batch[key], synth_batch[key]], 0) for key in list(train_batch.keys())}
             images, bboxes, RTs, Ks = batch['images'].to(self.device), batch['bboxes'].to(self.device), batch['RTs'].to(self.device), batch['Ks'].to(self.device)
             obj_ids = batch['obj_ids']
+            print(f'{time.time() - start} for devicing'); start = time.time()
             if self.use_mesh:
                 meshes = self.mesh_loader.batch_meshes(obj_ids.tolist())
                 ftrs = None
@@ -66,9 +68,11 @@ class Trainer(BaseTrainer):
                 meshes = None
                 ftrs = torch.cat([self.ftr[obj_id] for obj_id in obj_ids.tolist()], 0)
                 ftr_masks = torch.cat([self.ftr_mask[obj_id] for obj_id in obj_ids.tolist()], 0)
-            
+
+            print(f'{time.time() - start} for meshing'); start = time.time()
             self.optimizer.zero_grad()
             output, P = self.model(images, ftrs, ftr_masks, bboxes, Ks, RTs, meshes)
+            print(f'{time.time() - start} for forwarding'); start = time.time()
 
             if self.criterion.__name__ == 'point_matching_loss':
                 P['full_vertexes'] = torch.stack([self.mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
@@ -78,6 +82,7 @@ class Trainer(BaseTrainer):
             loss.backward()
 
             self.optimizer.step()
+            print(f'{time.time() - start} for updating'); start = time.time()
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
             self.train_metrics.loss_update(loss.detach().item(), write=True)
 
@@ -94,6 +99,7 @@ class Trainer(BaseTrainer):
                 break
             if self.is_toy and batch_idx==5:
                 break
+            print(f'{time.time() - start} for logging'); start = time.time()
         log = self.train_metrics.result()
 
         if self.device == 0:

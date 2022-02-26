@@ -56,7 +56,7 @@ class MeshesLoader():
                               faces=[faces],
                               textures=textures)
                 if self.use_mesh:
-                    mesh_dict[mesh_index] = mesh
+                    mesh_dict[mesh_index] = mesh.to(self.device)
                 pts_dict[mesh_index] = sample_points_from_meshes(mesh, self.N_pts)[0].to(self.device)
                 full_pts_dict[mesh_index] = mesh.verts_list()[0].to(self.device)
         return mesh_dict, pts_dict, full_pts_dict
@@ -74,7 +74,7 @@ class MeshesLoader():
 
     def batch_meshes(self, id_batch):
         mesh_list = [self.MESH_DICT[id] for id in id_batch]
-        mesh_batch = join_meshes_as_batch(mesh_list).to(self.device)
+        mesh_batch = join_meshes_as_batch(mesh_list)
         return mesh_batch
 
     def batch_meshes_info(self, id_batch):

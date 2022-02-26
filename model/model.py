@@ -86,13 +86,13 @@ class DProST(BaseModel):
         
 
     def forward(self, images, ftr, ftr_mask, bboxes, K_batch, gt_RT=None, mesh=None):
-        projstn_grid, coefficient = reshape_grid(K_batch, self.K_d.to(K_batch.device), self.XYZ.to(K_batch.device), self.steps.to(K_batch.device))
+        projstn_grid, coefficient = reshape_grid(K_batch, self.K_d, self.XYZ, self.steps)
         ####################### 3D feature module ###################################
         P = {
             'ftr': ftr, 
             'ftr_mask': ftr_mask,
             'mesh': mesh,
-            'img_size': self.img_size.to(K_batch.device),
+            'img_size': self.img_size,
         }
         pred = {}
 
@@ -131,6 +131,6 @@ class DProST(BaseModel):
             vxvyvz = pose_outputs[:, 4:7]
         else:
             raise ValueError(f'pose_dim={self.pose_dim} not supported')
-        vxvyvz = vxvyvz * self.vxvyvz_W_scaler.repeat(vxvyvz.shape[0], 1).to(vxvyvz.device) * self.vxvyvz_H_scaler.repeat(vxvyvz.shape[0], 1).to(vxvyvz.device)
+        vxvyvz = vxvyvz * self.vxvyvz_W_scaler.repeat(vxvyvz.shape[0], 1) * self.vxvyvz_H_scaler.repeat(vxvyvz.shape[0], 1)
         TCO_updated = apply_imagespace_predictions(TCO, K_crop, vxvyvz, dR)
         return TCO_updated
