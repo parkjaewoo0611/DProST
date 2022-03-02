@@ -18,7 +18,7 @@ from utils.util import visualize
 import matplotlib.pyplot as plt
 import csv
 import warnings
-from utils.util import hparams_key, build_ref, get_param, MetricTracker, farthest_rotation_sampling
+from utils.util import hparams_key, build_ref, get_param, MetricTracker, farthest_rotation_sampling, ensure_dir
 import random
 
 warnings.filterwarnings("ignore") 
@@ -50,7 +50,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
         # setup data_loader instances
         data_loader = getattr(module_data, 'DataLoader')(
             config['data_loader']['data_dir'],
-            batch_size=1,
+            batch_size=3,
             obj_list=config['data_loader']['obj_list'],
             mode='test',
             img_ratio=config['arch']['args']['img_ratio'],
@@ -161,6 +161,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
         
         result_csv_path = list(best_path.parts)
         result_csv_path[1], result_csv_path[-1] = 'log', f'test_result_{obj_test}.csv'
+        ensure_dir(os.path.join(*result_csv_path[:-1]))
         result_csv_path = os.path.join(*result_csv_path)
         with open(result_csv_path, "w") as csv_file:
             metric_csv = csv.writer(csv_file)
@@ -188,6 +189,7 @@ if __name__ == '__main__':
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
         CustomArgs(['--iteration'], type=int, target='arch;args;iteration'),
+        CustomArgs(['--obj_list'], type=list, target='data_loader;obj_list')
     ]
     config = ConfigParser.from_args(args, options)
     main(config)
