@@ -40,23 +40,24 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
                 shutil.rmtree(result_path)
             os.makedirs(result_path, exist_ok=True)
         # set repeated args required
-        config['data_loader']['args']['img_ratio'] = config['arch']['args']['img_ratio']
-        config['mesh_loader']['args']['data_dir'] = config['data_loader']['args']['data_dir']
-        config['mesh_loader']['args']['obj_list'] = config['data_loader']['args']['obj_list'] 
+        config['data_loader']['img_ratio'] = config['arch']['args']['img_ratio']
+        config['data_loader']['is_dist'] = False
+
+        config['mesh_loader']['args']['data_dir'] = config['data_loader']['data_dir']
+        config['mesh_loader']['args']['obj_list'] = config['data_loader']['obj_list'] 
         config['arch']['args']['device'] = device
 
         # setup data_loader instances
-        data_loader = getattr(module_data, config['data_loader']['type'])(
-            config['data_loader']['args']['data_dir'],
+        data_loader = getattr(module_data, 'DataLoader')(
+            config['data_loader']['data_dir'],
             batch_size=1,
-            reference_N=config['data_loader']['args']['reference_N'],
-            obj_list=config['data_loader']['args']['obj_list'],
-            img_ratio=config['data_loader']['args']['img_ratio'],
+            obj_list=config['data_loader']['obj_list'],
+            mode='test',
+            img_ratio=config['arch']['args']['img_ratio'],
             shuffle=False,
-            validation_split=0.0,
-            training=False,
-            num_workers=0,
-            FPS=config['data_loader']['args']['FPS']
+            num_workers=1,
+            rank=0,
+            is_dist = False
         )
         mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
@@ -69,23 +70,29 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
 
         metric_ftns = [getattr(module_metric, met) for met in config['test_metrics']]
         error_ftns = [getattr(module_error, met) for met in config['test_errors']]
-        
+
+        # reference build
+        ref_param = {
+            'K_d': model.K_d,
+            'XYZ' : model.XYZ, 
+            'steps' : model.steps, 
+            'ftr_size' : model.ftr_size, 
+            'H' : model.H, 
+            'W' : model.W
+        }
         ftr = {}
         ftr_mask = {}
         for obj_id in config['mesh_loader']['args']['obj_list']:
             print(f'Generating Reference Feature of obj {obj_id}')
-            if data_loader.is_pbr and ('YCBV' in data_loader.dataset.data_dir):
-                ref_dataset = data_loader.syn_dataset
+            ref_dataset = data_loader.dataset
+
+            if config['reference']['FPS']:
+                ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['reference']['reference_N'])
             else:
-                ref_dataset = data_loader.dataset
+                ref_idx = random.sample(ref_dataset.dataset, config['reference']['reference_N'])
 
-            if config['data_loader']['args']['FPS']:
-                ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['data_loader']['args']['reference_N'])
-            else:
-                ref_idx = random.sample(ref_dataset.dataset, config['data_loader']['args']['reference_N'])
-
-            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, model.K_d, model.XYZ, model.steps, model.ftr_size, model.H, model.W)
-
+            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, **ref_param)
+        
         use_mesh = config['mesh_loader']['args']['use_mesh']
 
     test_metrics = MetricTracker(error_ftns=error_ftns, metric_ftns=metric_ftns)
