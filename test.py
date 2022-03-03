@@ -81,7 +81,7 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             'W' : model.W
         }
         use_mesh = config['mesh_loader']['args']['use_mesh']
-        if use_mesh:
+        if not use_mesh:
             ftr = {}
             ftr_mask = {}
             for obj_id in config['mesh_loader']['args']['obj_list']:
