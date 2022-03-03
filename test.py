@@ -80,20 +80,22 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             'H' : model.H, 
             'W' : model.W
         }
-        ftr = {}
-        ftr_mask = {}
-        for obj_id in config['mesh_loader']['args']['obj_list']:
-            print(f'Generating Reference Feature of obj {obj_id}')
-            ref_dataset = data_loader.dataset
-
-            if config['reference']['FPS']:
-                ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['reference']['reference_N'])
-            else:
-                ref_idx = random.sample(ref_dataset.dataset, config['reference']['reference_N'])
-
-            ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, **ref_param)
-        
         use_mesh = config['mesh_loader']['args']['use_mesh']
+        if use_mesh:
+            ftr = {}
+            ftr_mask = {}
+            for obj_id in config['mesh_loader']['args']['obj_list']:
+                print(f'Generating Reference Feature of obj {obj_id}')
+                ref_dataset = data_loader.dataset
+
+                if config['reference']['FPS']:
+                    ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['reference']['reference_N'])
+                else:
+                    ref_idx = random.sample(ref_dataset.dataset, config['reference']['reference_N'])
+
+                ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, **ref_param)
+        
+
 
     test_metrics = MetricTracker(error_ftns=error_ftns, metric_ftns=metric_ftns)
 
