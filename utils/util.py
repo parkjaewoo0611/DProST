@@ -511,7 +511,7 @@ def farthest_rotation_sampling(dataset, obj_id, N):
     """
     farthest_idx = np.zeros(N).astype(int)
 
-    obj_dataset = [(i, sample) for i, sample in enumerate(dataset) if (sample['visib_fract'] > 0.95) and (sample['obj_id'] == obj_id)]
+    obj_dataset = [(i, sample) for i, sample in enumerate(dataset) if sample['obj_id'] == obj_id]
     Rs = torch.tensor(np.stack([data[1]['RT'][:3, :3] for data in obj_dataset]))
     mask_pixel_N = [data[1]['px_count_visib'] for data in obj_dataset]
     obj_index = np.array(mask_pixel_N).argmax()

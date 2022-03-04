@@ -81,7 +81,7 @@ def ADD_S_10(ADD_S, diameter, **kwargs):
 #     area = simps(count_correct / float(N), dx=dx)
 #     return area
 
-
+# from https://github.com/ethnhe/FFB6D/blob/master/ffb6d/utils/basic_utils.py
 def ADD_AUC(ADD, max_dis=0.1, **kwargs):
     ADD = [add/1000 for add in ADD]
     D = np.array(ADD)
