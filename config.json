@@ -45,7 +45,7 @@
         "ADD_S"
     ],
     "valid_metrics": [
-        "ADD_S_10"
+        "ADD_S_AUC"
     ],
     "test_errors": [
         "ADD", "ADD_S", "ADD_SS", "PROJ", "RE", "TE"

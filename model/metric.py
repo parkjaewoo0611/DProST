@@ -48,35 +48,36 @@ def ADD_S_10(ADD_S, diameter, **kwargs):
     score = np.mean(check) * 100
     return score
 
-# threshold from 0 ~ 10cm 
 # from https://github.com/LZGMatrix/CDPN_ICCV2019_ZhigangLi/blob/master/lib/utils/eval.py
-# Our RT values follow mm 
-dx = 1
-THR = np.arange(0, 100, dx).astype(np.float32)
+dx = 0.0001
+THR = np.arange(0, 0.1, dx).astype(np.float32)
 N_THR = THR.shape[0]
-def ADD_AUC(ADD, **kwargs):
+def ADD_AUC(ADD, diameter, **kwargs):
     N = len(ADD)
     count_correct = np.zeros(N_THR, dtype=np.float32)
-    for s in ADD:
-        correct = s < THR
+    for s, d in zip(ADD, diameter):
+        correct = s < THR * d
         count_correct += correct 
-    area = simps(count_correct / float(N), dx=dx)
-    return area
+    area = simps(count_correct / float(N), dx=dx) / 0.1
+    acc_mean = area * 100
+    return acc_mean
 
-def ADD_S_AUC(ADD_S, **kwargs):
+def ADD_S_AUC(ADD_S, diameter, **kwargs):
     N = len(ADD_S)
     count_correct = np.zeros(N_THR, dtype=np.float32)
-    for s in ADD_S:
-        correct = s < THR
+    for s, d in zip(ADD_S, diameter):
+        correct = s < THR * d
         count_correct += correct 
-    area = simps(count_correct / float(N), dx=dx)
-    return area
+    area = simps(count_correct / float(N), dx=dx) / 0.1
+    acc_mean = area * 100
+    return acc_mean
 
-def ADD_SS_AUC(ADD_SS, **kwargs):
+def ADD_SS_AUC(ADD_SS, diameter, **kwargs):
     N = len(ADD_SS)
     count_correct = np.zeros(N_THR, dtype=np.float32)
-    for s in ADD_SS:
-        correct = s < THR
+    for s, d in zip(ADD_SS, diameter):
+        correct = s < THR * d
         count_correct += correct 
-    area = simps(count_correct / float(N), dx=dx)
-    return area
+    area = simps(count_correct / float(N), dx=dx) / 0.1
+    acc_mean = area * 100
+    return acc_mean
