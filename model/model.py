@@ -83,6 +83,7 @@ class DProST(BaseModel):
 
         self.vxvyvz_W_scaler = torch.tensor([self.W, 1, 1]).unsqueeze(0).to(self.device)
         self.vxvyvz_H_scaler = torch.tensor([1, self.H, 1]).unsqueeze(0).to(self.device)
+        self.visualize = False
         
 
     def forward(self, images, ftr, ftr_mask, bboxes, K_batch, gt_RT=None, mesh=None):
@@ -116,9 +117,10 @@ class DProST(BaseModel):
             next_RT = self.update_pose(pred[i-1]['RT'], P['K_crop'], prediction)
             pred[i] = {'RT': next_RT}
 
-        if self.mode == 'train' or self.mode == 'valid':
+        if self.mode == 'train' or self.mode == 'valid' or self.visualize:
             pred[self.iteration]['proj'], pred[self.iteration]['dist'], pred[self.iteration]['grid'] = obj_visualize(pred[self.iteration]['RT'], **P)
             P['gt_proj'], P['gt_dist'], P['gt_grid'] = obj_visualize(gt_RT, **P)
+
         return pred, P
 
     def update_pose(self, TCO, K_crop, pose_outputs):

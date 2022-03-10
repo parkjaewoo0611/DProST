@@ -90,14 +90,27 @@ import torch
 import torchvision
 import numpy as np
 from bop_toolkit.bop_toolkit_lib.misc import get_symmetry_transformations
+from pytorch3d.structures import Pointclouds
 from pytorch3d.transforms import euler_angles_to_matrix, so3_relative_angle, Transform3d
 from pytorch3d.renderer import (
     RasterizationSettings, MeshRenderer, MeshRasterizer,
     HardPhongShader, PerspectiveCameras
 )
+from pytorch3d.utils import ico_sphere
+from pytorch3d.ops import sample_points_from_meshes
+from pytorch3d.renderer import (
+    look_at_view_transform,
+    FoVPerspectiveCameras,
+    PointsRasterizationSettings,
+    PointsRenderer,
+    PointsRasterizer,
+    AlphaCompositor,
+)
+
 from torchvision.ops import roi_align
 from torchvision.utils import make_grid
 import cv2
+import matplotlib.pyplot as plt
 from flatten_dict import flatten
 import random
 from PIL import Image
@@ -483,25 +496,38 @@ def contour(render, img, is_label):
     result = cv2.drawContours(img, contours, -1, color, 2)
     return result
 
-def visualize(RTs, output, P):
+def visualize(RTs, output, P, g_vis=False):
     vis_size = 1
-    img = P['roi_feature'][:vis_size]
-    lab, _, _ = obj_visualize(RTs, **P)
-    lab = lab[:vis_size]
-    lev = []
+    img = P['roi_feature']
+    img = make_grid(img[:vis_size], nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    lab_f, _, _ = obj_visualize(RTs, **P)
+    lab_f = make_grid(lab_f[:vis_size], nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    lev_f = []
     for idx in list(output.keys()):
         lev_, _, _ = obj_visualize(output[idx]['RT'], **P)
-        lev.append(lev_[:vis_size])
-    lev = torch.cat(lev, 0)
-    img_g = make_grid(img, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
-    lab_g = make_grid(lab, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
-    lev_g = make_grid(lev, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
-    g = np.concatenate((img_g, lab_g, lev_g), 0)
+        lev_f.append(lev_[:vis_size])
+    lev_f = torch.cat(lev_f, 0)
+    lev_f = make_grid(lev_f, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+    f = np.concatenate((img, lab_f, lev_f), 0)
 
-    lab_c = contour(lab_g, img_g, is_label=True)
-    lev_c = contour(lev_g, np.tile(lab_c, (len(output.keys()), 1, 1)), is_label=False)
-    c = np.concatenate((img_g, lab_c/255.0, lev_c/255.0), 0)
-    return c, g
+    lab_c = contour(lab_f, img, is_label=True)
+    lev_c = contour(lev_f, np.tile(lab_c, (len(output.keys()), 1, 1)), is_label=False)
+    c = np.concatenate((img, lab_c/255.0, lev_c/255.0), 0)
+    
+    if g_vis:
+        lab_g = grid_visualize(P['gt_grid'][:vis_size])
+        lab_g = make_grid(lab_g, nrow=vis_size, normalize=True, padding=0).detach().cpu().numpy()
+        lev_g = []
+        for idx in list(output.keys()):
+            lev_g_ = grid_visualize(output[idx]['grid'][:vis_size])
+            lev_g.append(lev_g_[:vis_size])
+        lev_g = torch.cat(lev_g, 0).permute(0, 3, 1, 2)
+        lev_g = make_grid(lev_g, nrow=vis_size, normalize=True, padding=0).permute(1, 2, 0).detach().cpu().numpy()
+        g = np.concatenate((lab_g, lev_g), 0)
+    else:
+        g = None
+
+    return c, f, g
 
 ########################################### reference function ######################################################
 
@@ -585,6 +611,48 @@ def meshes_visualize(K, RT, size, mesh):
     phong_renderer = camera_update(K, RT[:, :3, :3], RT[:, 3, :3], size.tolist()).to(RT.device)
     phong = phong_renderer(meshes_world=mesh)[..., :3].permute(0, 3, 1, 2) / 255.0
     return phong
+
+############################################## grid visualization function #######################################
+def grid_visualize(grid):
+    color = torch.zeros_like(grid)
+    idx_z = torch.arange(0, grid.shape[1]) / grid.shape[1]
+    idx_y = torch.arange(0, grid.shape[2]) / grid.shape[2]
+    idx_x = torch.arange(0, grid.shape[3]) / grid.shape[3]
+    color[..., 0], color[..., 1], color[..., 2] = torch.meshgrid(idx_z, idx_y, idx_x)
+
+    color = torch.flatten(color, 1, 3)
+    grid = torch.flatten(grid, 1, 3)
+    point_cloud = Pointclouds(points=grid, features=color)
+
+    # Initialize a camera.
+    R, T = look_at_view_transform(4, 90, 0)
+    cameras = FoVPerspectiveCameras(device=grid.device, R=R, T=T, znear=0.01)
+
+    # Define the settings for rasterization and shading. Here we set the output image to be of size
+    # 512x512. As we are rendering images for visualization purposes only we will set faces_per_pixel=1
+    # and blur_radius=0.0. Refer to raster_points.py for explanations of these parameters. 
+    raster_settings = PointsRasterizationSettings(
+        image_size=512, 
+        radius = 0.006,
+        points_per_pixel = 10
+    )
+
+    sphere = ico_sphere(4, grid.device)
+    sphere_points = sample_points_from_meshes(sphere, 5000)
+    sphere_colors = torch.ones_like(sphere_points)
+    sphere_point_cloud = Pointclouds(points=sphere_points, features=sphere_colors)
+    # Create a points renderer by compositing points using an alpha compositor (nearer points
+    # are weighted more heavily). See [1] for an explanation.
+    rasterizer = PointsRasterizer(cameras=cameras, raster_settings=raster_settings)
+    renderer = PointsRenderer(
+        rasterizer=rasterizer,
+        compositor=AlphaCompositor()
+    )
+    sphere_image = renderer(sphere_point_cloud)
+    images = renderer(point_cloud)
+    result = images[..., :3] * 3 / 4 + sphere_image[..., :3] / 4
+    return result
+
 
 ############################################### background substiture function ####################################
 

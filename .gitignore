@@ -103,6 +103,7 @@ ENV/
 .mypy_cache/
 
 # input data, saved log, checkpoints
+ECCV2022/*
 data/*
 !data/data_preprocess
 input/

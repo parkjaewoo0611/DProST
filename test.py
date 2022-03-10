@@ -59,11 +59,16 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             rank=0,
             is_dist = False
         )
+        ref_dataset = getattr(module_data, 'PoseDataset')(
+            config['data_loader']['data_dir'], 
+            config['data_loader']['obj_list'], 
+            'train', 
+            config['arch']['args']['img_ratio'])
         mesh_loader = config.init_obj('mesh_loader', module_mesh)
 
         # build model architecture
         model = config.init_obj('arch', module_arch)
-        # logger.info(model)
+        model.visualize = config['visualize']
 
         # get function handles of loss and metrics
         best_path = config.resume
@@ -86,8 +91,6 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             ftr_mask = {}
             for obj_id in config['mesh_loader']['args']['obj_list']:
                 print(f'Generating Reference Feature of obj {obj_id}')
-                ref_dataset = data_loader.dataset
-
                 if config['reference']['FPS']:
                     ref_idx = farthest_rotation_sampling(ref_dataset.dataset, obj_id, config['reference']['reference_N'])
                 else:
@@ -95,7 +98,6 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
 
                 ftr[obj_id], ftr_mask[obj_id] = build_ref(ref_dataset, ref_idx, **ref_param)
         
-
 
     test_metrics = MetricTracker(error_ftns=error_ftns, metric_ftns=metric_ftns)
 
@@ -146,10 +148,12 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
             test_metrics.update('id', obj_ids.tolist())
 
             #### visualize images
-            if is_test and config["visualize"]:
-                c, g = visualize(RTs, output, P)
+            if is_test and config["visualize"] and (batch_idx % 10 == 0):
+                c, f, g = visualize(RTs, output, P, g_vis=True)
                 plt.imsave(f'{result_path}/result_{batch_idx}.png', c)
-                plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', g)
+                plt.imsave(f'{result_path}/resultvis_{batch_idx}.png', f)
+                plt.imsave(f'{result_path}/grid_{batch_idx}.png', g)
+                
             
             if config['trainer']['is_toy'] and batch_idx==5:
                 break
@@ -162,7 +166,10 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
         logger.info(log)
         
         result_csv_path = list(best_path.parts)
-        result_csv_path[1], result_csv_path[-1] = 'log', f'test_result_{obj_test}.csv'
+        if not is_test:
+            result_csv_path[1], result_csv_path[-1] = 'log', f'test_result_{obj_test}.csv'
+        else:
+            result_csv_path[-2], result_csv_path[-1] = 'log', f'test_result_{obj_test}.csv'
         ensure_dir(os.path.join(*result_csv_path[:-1]))
         result_csv_path = os.path.join(*result_csv_path)
         with open(result_csv_path, "w") as csv_file:
@@ -191,7 +198,8 @@ if __name__ == '__main__':
     CustomArgs = collections.namedtuple('CustomArgs', 'flags type target')
     options = [
         CustomArgs(['--iteration'], type=int, target='arch;args;iteration'),
-        CustomArgs(['--obj_list'], type=list, target='data_loader;obj_list')
+        CustomArgs(['--obj_list'], type=list, target='data_loader;obj_list'),
+        CustomArgs(['--batch_size'], type=int, target='data_loader;batch_size')
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

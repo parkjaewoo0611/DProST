@@ -45,7 +45,7 @@
         "ADD_S"
     ],
     "valid_metrics": [
-        "ADD_S_10"
+        "ADD_S_AUC"
     ],
     "test_errors": [
         "ADD", "ADD_S", "ADD_SS", "PROJ", "RE", "TE"
@@ -64,12 +64,12 @@
         }
     },
     "trainer": {
-        "epochs": 300,
+        "epochs": 3000,
         "save_dir": "saved/",
-        "save_period": 10,
+        "save_period": 100,
         "verbosity": 2,
-        "monitor": "max val_ADD_S_10",
-        "early_stop": 100,
+        "monitor": "max val_ADD_S_AUC",
+        "early_stop": 1000,
         "tensorboard": true,
         "is_toy": false
     }

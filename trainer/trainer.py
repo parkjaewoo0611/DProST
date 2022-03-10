@@ -98,10 +98,10 @@ class Trainer(BaseTrainer):
 
         if self.device == 0:
             if self.do_validation and epoch % self.save_period == 0 :
-                c, g = visualize(RTs, output, P)
+                c, f, _ = visualize(RTs, output, P)
                 self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
-                self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
-                
+                self.writer.add_image(f'rendering', torch.tensor(f).permute(2, 0, 1))
+
                 val_log = self._valid_epoch(epoch)
                 log.update(**{'val_'+k : v for k, v in val_log.items()})
 
@@ -161,9 +161,9 @@ class Trainer(BaseTrainer):
                 if self.is_toy and batch_idx==5:
                     break
 
-            c, g = visualize(RTs, output, P)
+            c, f, _ = visualize(RTs, output, P)
             self.writer.add_image(f'contour', torch.tensor(c).permute(2, 0, 1))
-            self.writer.add_image(f'rendering', torch.tensor(g).permute(2, 0, 1))
+            self.writer.add_image(f'rendering', torch.tensor(f).permute(2, 0, 1))
 
         result = self.valid_metrics.result()
         for k, v in result.items():
