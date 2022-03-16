@@ -20,6 +20,7 @@ import csv
 import warnings
 from utils.util import hparams_key, build_ref, get_param, MetricTracker, farthest_rotation_sampling, ensure_dir
 import random
+import json
 
 warnings.filterwarnings("ignore") 
 
@@ -165,17 +166,25 @@ def main(config, is_test=True, data_loader=None, mesh_loader=None, model=None, b
         })
         logger.info(log)
         
-        result_csv_path = list(best_path.parts)
+        metric_path = list(best_path.parts)
         if not is_test:
-            result_csv_path[1], result_csv_path[-1] = 'log', f'test_result_{obj_test}.csv'
+            metric_path[1], metric_path[-1] = 'log', f'test_result_{obj_test}.csv'
         else:
-            result_csv_path[-2], result_csv_path[-1] = 'log', f'test_result_{obj_test}.csv'
-        ensure_dir(os.path.join(*result_csv_path[:-1]))
-        result_csv_path = os.path.join(*result_csv_path)
-        with open(result_csv_path, "w") as csv_file:
+            metric_path[-2], metric_path[-1] = 'log', f'test_result_{obj_test}.csv'
+        ensure_dir(os.path.join(*metric_path[:-1]))
+        metric_path = os.path.join(*metric_path)
+        with open(metric_path, "w") as csv_file:
             metric_csv = csv.writer(csv_file)
             for k, v in log.items():
                 metric_csv.writerow([k, v])
+                
+        error_path = metric_path.split('/')
+        error_path[-1] = f'error_{obj_test}.json'
+        error_path = os.path.join(*error_path)
+        error = {k: list(map(float, v)) for k, v in test_metrics._stack.items()}
+        with open(error_path, "w", encoding='utf-8') as f:
+            json.dump(error, f, ensure_ascii=False, indent=4)
+            
 
     if not is_test:
         hparams = hparams_key(config.config)
@@ -199,7 +208,8 @@ if __name__ == '__main__':
     options = [
         CustomArgs(['--iteration'], type=int, target='arch;args;iteration'),
         CustomArgs(['--obj_list'], type=list, target='data_loader;obj_list'),
-        CustomArgs(['--batch_size'], type=int, target='data_loader;batch_size')
+        CustomArgs(['--batch_size'], type=int, target='data_loader;batch_size'),
+        CustomArgs(['--gpu_scheduler'], type=bool, target='gpu_scheduler'),
     ]
     config = ConfigParser.from_args(args, options)
     main(config)

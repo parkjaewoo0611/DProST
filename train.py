@@ -31,20 +31,12 @@ np.random.seed(SEED)
 
 def main(gpu, config, n_gpu):
     config['arch']['args']['device'] = gpu
-    # if n_gpu > 1:    
-    #     port = random.randint(1111, 9999)
-    #     dist.init_process_group(
-    #             backend='nccl',
-    #             init_method=f'tcp://127.0.0.1:{port}',
-    #             world_size=n_gpu,
-    #             rank=gpu)
+
     # build model architecture, then print to console
     model = config.init_obj('arch', module_arch )
     torch.cuda.set_device(gpu)
     model = model.to(gpu)
-    # if n_gpu > 1:
-    #     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
-    
+
     # setup data_loader instances
     print('Data Loader setting...')
     train_loader_args = config['data_loader'].copy()
@@ -53,10 +45,7 @@ def main(gpu, config, n_gpu):
 
     train_loader_args['mode'] = 'train'
     valid_loader_args['mode'] = 'test'
-    # if n_gpu > 1:
-    #     train_loader_args['is_dist'] = True
-    #     synth_loader_args['is_dist'] = True
-    # else:
+
     train_loader_args['is_dist'] = False
     synth_loader_args['is_dist'] = False
     valid_loader_args['is_dist'] = False
@@ -125,9 +114,6 @@ def main(gpu, config, n_gpu):
     trainer = Trainer(config, **material)
     trainer.train()
     
-    # if n_gpu > 1:
-    #     dist.barrier()
-    # if gpu == 0 :
     material['data_loader'] = valid_data_loader
     material["best_path"] = Path(f"{trainer.best_dir}/model_best.pth")
     material['writer'] = trainer.writer.set_mode('test')
@@ -187,10 +173,4 @@ if __name__ == '__main__':
     config['mesh_loader']['args']['obj_list'] = config['data_loader']['obj_list']
 
     logger = config.get_logger('train')
-    # if n_gpu > 1:
-    #     master_port = random.randint(1111, 9999)
-    #     os.environ['MASTER_ADDR'] = '127.0.0.1'
-    #     os.environ['MASTER_PORT'] = f'{master_port}'
-    #     spawn(main, nprocs=n_gpu, args=(config, n_gpu, ))
-    # else:
     main(int(config['gpu_id']), config, n_gpu)

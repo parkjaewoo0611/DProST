@@ -77,6 +77,42 @@ def TE(out_RT, gt_RT, ids, DATA_PARAM, **kwargs):
         error.append(e)
     return error
 
+def TXE(out_RT, gt_RT, ids, DATA_PARAM, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
+    ids = ids.cpu().numpy()
+    error = []
+    for i, id in enumerate(ids):
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * DATA_PARAM['idx2radius'][id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * DATA_PARAM['idx2radius'][id]
+        e = np.abs(t_e[0] - t_g[0])
+        error.append(e)
+    return error
+
+def TYE(out_RT, gt_RT, ids, DATA_PARAM, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
+    ids = ids.cpu().numpy()
+    error = []
+    for i, id in enumerate(ids):
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * DATA_PARAM['idx2radius'][id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * DATA_PARAM['idx2radius'][id]
+        e = np.abs(t_e[1] - t_g[1])
+        error.append(e)
+    return error
+
+def TZE(out_RT, gt_RT, ids, DATA_PARAM, **kwargs):
+    out_RT = out_RT.detach().cpu().numpy()
+    gt_RT = gt_RT.detach().cpu().numpy()
+    ids = ids.cpu().numpy()
+    error = []
+    for i, id in enumerate(ids):
+        t_e = out_RT[i, :3, 3][:, np.newaxis] * DATA_PARAM['idx2radius'][id]
+        t_g = gt_RT[i, :3, 3][:, np.newaxis] * DATA_PARAM['idx2radius'][id]
+        e = np.abs(t_e[2] - t_g[2])
+        error.append(e)
+    return error
+
 def PROJ(out_RT, gt_RT, points, ids, K, DATA_PARAM, **kwargs):
     out_RT = out_RT.detach().cpu().numpy()
     gt_RT = gt_RT.detach().cpu().numpy()
