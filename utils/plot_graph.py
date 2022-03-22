@@ -114,7 +114,6 @@ im_files = [
     'ECCV2022/LM_IM/15/log/error_15.json',
     ]
 errors = []
-
 for i, path in enumerate(im_files):
     obj = path.split('_')[-1][:-5]
     with open(path, 'r') as f:
@@ -129,5 +128,5 @@ plt.ylabel(y_label,fontsize=17)
 plt.legend(fontsize=11, loc='lower right')
 plt.savefig('im.png',dpi=300)
 plt.clf()
-plt.cla() 
+plt.cla()
 plt.close()
