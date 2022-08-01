@@ -1,0 +1,13 @@
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 1
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 2
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 4
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 5
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 6
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 8
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 9
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 10
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 11
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 12
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 13
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 14
+python train.py --gpu_scheduler true --data_dir Dataset/LINEMOD --mode train_pbr --use_mesh false --batch_size 7 --obj_list 15
