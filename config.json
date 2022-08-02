@@ -1,0 +1,81 @@
+{
+    "name": "DProST",
+    "gpu_id": "0",
+    "gpu_scheduler": false,
+    "arch": {
+        "type": "DProST",
+        "args": {
+            "img_ratio": 0.5,
+            "bbox_size": 128,
+            "iteration": 2,
+            "model_name": "res34",
+            "N_z": 64
+        }
+    },
+    "data_loader": {
+        "type": "DataLoader",
+        "args": {
+            "data_dir": "Dataset/LINEMOD",
+            "batch_size": 7,
+            "obj_list" : [1],
+            "mode" : "train_pbr",
+            "shuffle": true,
+            "num_workers": 4
+        }
+    },
+    "reference_loader": {
+        "type": "ReferenceLoader",
+        "args": {
+            "FPS": true,
+            "reference_N": 8,
+            "ref_size": 128
+        }
+    },
+    "mesh_loader": {
+        "type": "MeshesLoader",
+        "args":{
+            "N_pts" : 64,
+            "use_mesh": false
+        }
+    },
+    "optimizer": {
+        "type": "Adam",
+        "args":{
+            "lr": 0.0001,
+            "weight_decay": 0
+        }
+    },
+    "loss": "grid_matching_loss",
+    "valid_errors": [
+        "ADD_S"
+    ],
+    "valid_metrics": [
+        "ADD_S_10"
+    ],
+    "test_errors": [
+        "ADD", "ADD_S", "ADD_SS", "PROJ", "RE", "TE"
+    ],
+    "test_metrics": [ 
+        "ADD_S_02", "ADD_S_05", "ADD_S_10",
+        "ADD_AUC", "ADD_S_AUC", "ADD_SS_AUC", 
+        "PROJ_02", "PROJ_05", "PROJ_10",
+        "RE_TE_02", "RE_TE_05"
+    ],
+    "lr_scheduler": {
+        "type": "StepLR",
+        "args": {
+            "step_size": 2000,
+            "gamma": 0.1
+        }
+    },
+    "trainer": {
+        "epochs": 3000,
+        "save_dir": "saved/",
+        "save_period": 100,
+        "verbosity": 1,
+        "monitor": "max",
+        "early_stop": 1000,
+        "tensorboard": true,
+        "is_toy": false
+    }
+}
