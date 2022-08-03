@@ -73,7 +73,7 @@ Dataset
 ## Train
 - Check the code and model are correctly installed by executing the following toy example command.
 ```
-python train.py --gpu_id 0 --data_dir Dataset/LINEMOD --is_toy true
+python train.py --gpu_id 0 --data_dir Dataset/LINEMOD --is_toy true --batch_size 1
 ```
 - For faster training, we updated the [PyTorch DDP](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html) for multi-GPU training (which may show slightly different performance) and [simple-gpu-scheduling](https://pypi.org/project/simple-gpu-scheduler) to easily manage many experiments. 
 - Train the DProST as you want
