@@ -60,8 +60,6 @@ class Trainer(BaseTrainer):
             self.optimizer.zero_grad()
             output, P = self.model(images, refs, ref_masks, bboxes, Ks, RTs, meshes)
 
-            if self.criterion.__name__ == 'point_matching_loss':
-                P['full_vertexes'] = torch.stack([self.mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
             loss = 0
             for idx in list(output.keys())[1:]:
                 loss += self.criterion(RTs, output[idx], **P)
@@ -115,9 +113,6 @@ class Trainer(BaseTrainer):
                 output, P = self.model(images, refs, ref_masks, bboxes, Ks, RTs, meshes)
 
                 P['vertexes'] = [self.mesh_loader.PTS_DICT[obj_id.tolist()] for obj_id in obj_ids]
-                if self.criterion.__name__ == 'point_matching_loss':
-                    P['full_vertexes'] = torch.stack([self.mesh_loader.FULL_PTS_DICT[obj_id.tolist()] for obj_id in obj_ids])
-
                 self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)     # steps per second & to match steps in training
  
                 M = {

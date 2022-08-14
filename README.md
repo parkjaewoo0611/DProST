@@ -73,7 +73,7 @@ Dataset
 ## Train
 - Check the code and model are correctly installed by executing the following toy example command.
 ```
-python train.py --gpu_id 0 --data_dir Dataset/LINEMOD --is_toy true
+python train.py --gpu_id 0 --data_dir Dataset/LINEMOD --is_toy true --batch_size 1
 ```
 - For faster training, we updated the [PyTorch DDP](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html) for multi-GPU training (which may show slightly different performance) and [simple-gpu-scheduling](https://pypi.org/project/simple-gpu-scheduler) to easily manage many experiments. 
 - Train the DProST as you want
@@ -83,10 +83,17 @@ Ex)
 python train.py --gpu_id 0 --data_dir Dataset/LINEMOD --use_mesh false --obj_list 1 --mode train_pbr 
 
 # LINEMOD each object on gpu 0,1,2 (with gpu_scheduling)
+<<<<<<< HEAD
 simple_gpu_scheduler --gpus 0,1,2 < gpu_commands.txt
 
 # OCCLUSION all objects on gpu 0,1,2 (with DDP)
 python train.py --gpu_id 0,1,2 --data_dir Dataset/OCCLUSION --use_mesh false --obj_list 1 5 6 8 9 10 11 12 --mode train_pbr
+=======
+simple_gpu_scheduler --gpus 0 1 2 < gpu_commands.txt
+
+# OCCLUSION all objects on gpu 0,1,2 (with DDP)
+python train.py --gpu_id 0 1 2 --data_dir Dataset/OCCLUSION --use_mesh false --obj_list 1 5 6 8 9 10 11 12 --mode train_pbr
+>>>>>>> 7bb621827868761efb1fc6a01662dbd54acd18c4
 
 # train YCBV 002_master_chef_can object with mesh on gpu 0 
 python train.py --gpu_id 0 --data_dir Dataset/YCBV --use_mesh true --obj_list 1 --mode train_pbr --epochs 300 --save_period 10 --early_stop 100 -- lr_step_size 200 --valid_metrics ADD_S_AUC
