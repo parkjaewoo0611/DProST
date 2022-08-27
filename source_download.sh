@@ -1,15 +1,15 @@
 #!/bin/bash
 project_root=$(pwd)
-dataset_root=/home/jw/D/6D-Pose/new_Dataset  # change path to what you want
+dataset_root=/home/jw/E/Instance-Pose/Dataset  # change path to what you want
 mkdir -p ${dataset_root}
 cd ${dataset_root}
 SRC=https://bop.felk.cvut.cz/media/data/bop_datasets
 
 # LINEMOD dataset
-gdown https://drive.google.com/uc?id=1YvxHpiNrK2lCd68DhER0Je5w_EexORYo              # test_bbox, index, preprocessed files
-wget $SRC/lm_models.zip                                                             # models
-wget $SRC/lm_test_all.zip                                                           # test, train
-wget $SRC/lm_train_pbr.zip                                                          # pbr
+gdown https://drive.google.com/uc?id=1zjihT3BkgkEQ781Ns7ZQrYsksXSl-i-D             # test_bbox, index, preprocessed files
+wget $SRC/lm_models.zip  --no-check-certificate                                                           # models
+wget $SRC/lm_test_all.zip --no-check-certificate                                                          # test, train
+wget $SRC/lm_train_pbr.zip --no-check-certificate                                                         # pbr
 
 unzip LINEMOD.zip
 unzip lm_models.zip -d LINEMOD
@@ -37,9 +37,9 @@ rm lm_train_pbr.zip
 
 
 # OCCLUSION dataset
-gdown https://drive.google.com/uc?id=1DNyLrLMOvnhJP7i6PfukC_6-6Jeiu2dt               # test_bbox, index, preprocessed files
-wget $SRC/lmo_models.zip                                                             # models
-wget $SRC/lmo_test_all.zip                                                           # test, train
+gdown https://drive.google.com/uc?id=1HyZOfDNFcliRG270-lEGRF_NeUSPQLWu             # test_bbox, index, preprocessed files
+wget $SRC/lmo_models.zip --no-check-certificate                                                            # models
+wget $SRC/lmo_test_all.zip --no-check-certificate                                                          # test, train
 
 unzip OCCLUSION.zip
 unzip lmo_models.zip -d OCCLUSION
@@ -57,11 +57,11 @@ rm lmo_test_all.zip
 
 
 # YCBV Dataset
-gdown https://drive.google.com/uc?id=1hw_v7M5cYlUsVajjtFu5mhcXTk96bjSD                # test_bbox, index, preprocessed files
-wget $SRC/ycbv_models.zip                                                             # models
-wget $SRC/ycbv_test_all.zip                                                           # test
-wget $SRC/ycbv_train_pbr.zip                                                          # pbr
-wget $SRC/ycbv_train_real.zip                                                         # train
+gdown https://drive.google.com/uc?id=1jdl9oU9g_TxK3xO9gRavWHDT7359TlLy               # test_bbox, index, preprocessed files
+wget $SRC/ycbv_models.zip --no-check-certificate                                                            # models
+wget $SRC/ycbv_test_all.zip --no-check-certificate                                                          # test
+wget $SRC/ycbv_train_pbr.zip --no-check-certificate                                                         # pbr
+wget $SRC/ycbv_train_real.zip --no-check-certificate                                                        # train
 
 unzip YCBV.zip
 unzip ycbv_models.zip -d YCBV
