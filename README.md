@@ -128,10 +128,12 @@ Our project is based on the following projects. We appreciate the authors for sh
 
 ## Citation
 ```
-@article{park2022dprost,
-  title={DProST:Dynamic Projective Spatial Transformer Network for 6D Pose Estimation},
+@inproceedings{park2022dprost,
+  title={DProST: Dynamic Projective Spatial Transformer Network for 6D Pose Estimation},
   author={Park, Jaewoo and Cho, Nam Ik},
-  booktitle={ECCV},
-  year={2022}
+  booktitle={European Conference on Computer Vision},
+  pages={363--379},
+  year={2022},
+  organization={Springer}
 }
 ```
