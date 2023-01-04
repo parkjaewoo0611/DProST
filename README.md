@@ -3,7 +3,7 @@ Pytorch implementation of
 "DProST: Dynamic Projective Spatial Transformer Network for 6D Pose Estimation"[ECCV2022]  
 DProST is a 6D-object pose estimation method based on grid matching in object space.
 
-[[ArXiv](https://arxiv.org/abs/2112.08775)]
+[[ECCV](https://www.ecva.net/papers/eccv_2022/papers_ECCV/papers/136660357.pdf)][[ArXiv](https://arxiv.org/abs/2112.08775)]
 
 ## Overview of DProST
 ![](figure/overview.png)
@@ -128,10 +128,12 @@ Our project is based on the following projects. We appreciate the authors for sh
 
 ## Citation
 ```
-@article{park2022dprost,
-  title={DProST:Dynamic Projective Spatial Transformer Network for 6D Pose Estimation},
+@inproceedings{park2022dprost,
+  title={DProST: Dynamic Projective Spatial Transformer Network for 6D Pose Estimation},
   author={Park, Jaewoo and Cho, Nam Ik},
-  booktitle={ECCV},
-  year={2022}
+  booktitle={European Conference on Computer Vision},
+  pages={363--379},
+  year={2022},
+  organization={Springer}
 }
 ```
