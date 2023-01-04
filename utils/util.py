@@ -352,10 +352,10 @@ def grid_pushing(RT, grid_crop):
     return cam_grid, dist
 
 
-def grid_transformation(grid, RT):
+def grid_transformation(grid, RT, inverse=True):
     grid_shape = grid.shape
     grid = grid.flatten(1, 3)            
-    transformed_grid = transform_pts(RT, grid, inverse=True).reshape(grid_shape)
+    transformed_grid = transform_pts(RT, grid, inverse=inverse).reshape(grid_shape)
     return transformed_grid
 
 
