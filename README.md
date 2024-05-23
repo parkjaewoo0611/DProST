@@ -94,7 +94,7 @@ python train.py --gpu_id 0 --data_dir Dataset/YCBV --use_mesh true --obj_list 1 
 
 ## Test 
 ### Pre-trained Model
-- Download pre-trained models [here](https://drive.google.com/drive/folders/16ZtiAQ_579Kd7pmMu8Wz4EB7Urmr8lWt)
+- Download pre-trained models [here](https://drive.google.com/drive/folders/1flw_7qZ-boEavUPtZw_yDpm6s-Y0I2Bf)
 - Evaluate and visualize the model with test code
 ```
 Ex)
