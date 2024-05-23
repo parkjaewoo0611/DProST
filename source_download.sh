@@ -6,7 +6,7 @@ cd ${dataset_root}
 SRC=https://bop.felk.cvut.cz/media/data/bop_datasets
 
 # LINEMOD dataset
-gdown https://drive.google.com/uc?id=1zjihT3BkgkEQ781Ns7ZQrYsksXSl-i-D  --no-check-certificate           # test_bbox, index, preprocessed files
+gdown https://drive.google.com/uc?id=1a_-_l_BYxuIB3cFewafvbwCgi7EbtrXD  --no-check-certificate           # test_bbox, index, preprocessed files
 wget $SRC/lm_models.zip  --no-check-certificate                                                           # models
 wget $SRC/lm_test_all.zip --no-check-certificate                                                          # test, train
 wget $SRC/lm_train_pbr.zip --no-check-certificate                                                         # pbr
@@ -36,7 +36,7 @@ cd ..
 
 
 # OCCLUSION dataset
-gdown https://drive.google.com/uc?id=1HyZOfDNFcliRG270-lEGRF_NeUSPQLWu  --no-check-certificate           # test_bbox, index, preprocessed files
+gdown https://drive.google.com/uc?id=1wxc-ZR5tFBaqf1LmCHxNwOrZraWWIZcK  --no-check-certificate           # test_bbox, index, preprocessed files
 wget $SRC/lmo_models.zip --no-check-certificate                                                            # models
 wget $SRC/lmo_test_all.zip --no-check-certificate                                                          # test, train
 
@@ -55,7 +55,7 @@ cd ..
 
 
 # YCBV Dataset
-gdown https://drive.google.com/uc?id=1jdl9oU9g_TxK3xO9gRavWHDT7359TlLy  --no-check-certificate             # test_bbox, index, preprocessed files
+gdown https://drive.google.com/uc?id=1NSGv7Hoj7cSKtlHljmznzd1vs6xo4Z0w  --no-check-certificate             # test_bbox, index, preprocessed files
 wget $SRC/ycbv_models.zip --no-check-certificate                                                            # models
 wget $SRC/ycbv_test_all.zip --no-check-certificate                                                          # test
 wget $SRC/ycbv_train_pbr.zip --no-check-certificate                                                         # pbr
