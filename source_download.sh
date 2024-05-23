@@ -73,15 +73,6 @@ rm ycbv_train_pbr.zip
 unzip ycbv_train_real.zip -d YCBV
 rm ycbv_train_real.zip
 
-
-
-
-
-
-
-
-
-
 cd YCBV
 mv train_pbr pbr
 mv train_real train       
